@@ -111,6 +111,48 @@ at the top of their `Podfile` and write `pod 'Proximiio', '~> 6.0'`. This repo
 is **not** created today; the direct `:podspec => <url>` path above is the
 supported flow.
 
+## Build-time offline package fetcher (CLI)
+
+Each release also attaches **`proximiio-offline-fetch-macos.zip`** — a prebuilt,
+universal (`arm64` + `x86_64`) macOS command-line tool that downloads a venue's
+offline package into a bundle-ready directory (`manifest.json` + SHA-256-verified
+members) at **build time**. Run it from an Xcode **Run Script** build phase or a
+CI step, then bundle the output directory as a folder reference and install it on
+first launch with `Proximiio.shared.installBundledOfflineSeedIfNeeded(...)`.
+
+Download the asset for the release you want:
+
+```
+https://github.com/proximiio/proximiio-sdk-ios-binary/releases/download/<tag>/proximiio-offline-fetch-macos.zip
+```
+
+Then unzip, make it executable, and run it:
+
+```sh
+unzip proximiio-offline-fetch-macos.zip
+chmod +x proximiio-offline-fetch
+./proximiio-offline-fetch --token "$PROXIMIIO_TOKEN" --output ./OfflineSeed [--place <id>]
+```
+
+Verify the download independently if you like:
+
+```sh
+shasum -a 256 proximiio-offline-fetch-macos.zip
+```
+
+> **Gatekeeper (unsigned binary).** This CLI is **not codesigned or notarized
+> yet** — signing/notarization is planned for GA. On first run macOS Gatekeeper
+> may block it with *"cannot be opened because the developer cannot be
+> verified."* Clear the quarantine flag once after unzipping:
+>
+> ```sh
+> xattr -d com.apple.quarantine proximiio-offline-fetch
+> ```
+>
+> or right-click the binary in Finder ▸ **Open** ▸ **Open** to approve it. In a
+> headless CI runner the downloaded asset has no quarantine flag, so no action is
+> needed there.
+
 ## Checksum verification
 
 Each release pins the xcframework by SHA-256 **checksum** inside `Package.swift`
