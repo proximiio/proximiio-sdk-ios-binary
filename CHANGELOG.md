@@ -6,6 +6,1391 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.31] — 2026-09-11
+
+### Changed
+- **The binary distribution no longer ships `ProximiioQuuppa`.** The
+  xcframework build sweeps every `.swift` under `Sources/` into one flattened
+  `ProximiioBinary`, which opted a new module **in** by default — so the
+  experimental Quuppa QPE client, its configuration type and its test doubles
+  (`QuuppaFakeQPE`, `QuuppaFakePayloads`, `QuuppaScriptedSleeper`) sat in every
+  binary customer's autocomplete, undoing the effort spent hiding them from the
+  documentation. `scripts/build-xcframeworks.sh` now carries an explicit
+  `EXCLUDED_MODULES` list, one entry with its reason, and both it and
+  `scripts/verify-binary-release.sh` assert on the shipped `.swiftinterface`
+  that the withheld symbols are gone **and** that `ProximiioBlueiot` and
+  `ProximiioLiveView` are still present — those two stay in the binary, because
+  the Blueiot cloud relay client is in a live customer's shipping product.
+
+  Source consumers are unaffected: `Package.swift` still vends
+  `ProximiioQuuppa` as a product, and `api-baseline/` — which records the
+  **source** package's surface, not the binary's — is unchanged.
+  `import Proximiio` is untouched for everyone.
+
+### Added
+- **Shim products in the binary distribution package.**
+  `distribution/Package.swift.template` now also vends `ProximiioCore`
+  alongside `Proximiio`, so `proximiio-ios-map-v6` can write
+  `.product(name: "ProximiioCore", …)` and become a version-tagged package
+  instead of pinning `branch: "master"` on the SDK source. A shim buys the
+  **name, not isolation**: the binary is one flattened module, so a target
+  importing `ProximiioCore` still sees the whole SDK surface and still links
+  the whole dylib. Real isolation would need one xcframework per module — see
+  `docs/binary-distribution-analysis.md` for why that was measured and
+  rejected. `verify-binary-release.sh` now builds one smoke target per vended
+  product, each importing only its own, so a broken shim cannot ship green.
+- **`RelayPositionProvider` reports its connection**, so an app fed only by the
+  RTLS relay can finally reach `NoPositionReason.positioningSourceOffline`. The
+  reason shipped with only `BlueiotCloudRelayClient` answering `connection`,
+  which left the vendor-neutral client — the one the case was written for —
+  inheriting the protocol default `.unknown` and unable to raise it. The state
+  lives on `RelayClient.connection` (new, `public`) and the provider forwards it:
+  - `.online` from the first position the run loop accepts, on **either**
+    transport. An app whose SSE was eaten by a proxy is polling, is receiving the
+    venue's fixes, and is not lost — it reads online. `transportMode()` remains
+    the way to ask which path won.
+  - `.offline` once consecutive failures on the path in use reach
+    `streamFailuresBeforePollFallback` — the client's own tolerance, the count at
+    which it stops believing SSE and changes strategy. Below it the answer does
+    not move: one `text/event-stream` connection ending and being re-established
+    is the ordinary lifecycle of a long stream, and reporting it would blink a
+    "venue lost" banner at the reconnect cadence. It clears on the next accepted
+    position, not on a counter reset.
+  - `.unknown` while a freshly started client has neither accepted a position nor
+    failed that many times, and again after `resume()` — the network the phone
+    came back to has not been tried yet. A warming-up app reads
+    `awaitingFirstFix` rather than "the venue is gone", because the reason
+    ignores `.unknown` on both sides.
+  - `.offline` while stopped or paused, when the client holds nothing open. That
+    is the literal truth and not a venue outage; the facade already keeps the two
+    apart by weighing only providers it is actually consuming.
+  - The geofence loop is deliberately outside this signal: it is an independent
+    subscription a host may never open, it carries transitions rather than
+    positions, and it has its own readers.
+- **The vendor-neutral RTLS relay client is its own module, `ProximiioRelay`.**
+  `RelayClient`, `RelayPositionProvider`, `RelayConfiguration`, `RelayPosition`,
+  `RelayGeofenceEvent`, `RelayError`, `RelayURLSessionTransport` and the
+  `RelayFakeServer` simulation harness lived inside `ProximiioQuuppa` — a module
+  we deliberately keep out of an integrator's sight because it is experimental
+  and named after somebody else's RTLS. That mismatch had started to cost real
+  things: the client permissions document could only describe the neutral seam
+  instead of the shipping relay client, and the README's Quuppa row turned out
+  to be the only place naming the relay's home. Now it is a library product of
+  its own, **re-exported by the umbrella** — so `import Proximiio` sees the
+  relay API with no second import, and `ProximiioQuuppa` is once again only what
+  its name says.
+  - Two relay-only types were renamed with the move: `QuuppaStreamingTransport`
+    → `RelayStreamingTransport`, `QuuppaStreamingResponse` →
+    `RelayStreamingResponse`. Only a custom SSE transport touches them.
+  - The module owns its own request/response and time seams —
+    `RelayHTTPTransport`, `RelayHTTPResponse`, `RelayClock`, `RelaySystemClock`,
+    `RelaySleeping`, `relaySystemSleeper`, `RelayManualClock`,
+    `RelayScriptedSleeper` — exact renames of the `Quuppa…` ones it used to
+    borrow, so that neither module depends on the other in either direction. A
+    custom transport now conforms to `RelayHTTPTransport`.
+  - `ProximiioQuuppa` is unchanged apart from losing the relay half: same
+    types, same behaviour, same tests. See the 2026-09-11 amendment under
+    *Umbrella-only distribution* in `docs/DECISIONS.md` for why this module is
+    re-exported where the two vendor clients are not.
+- **`ProximiioOffline` is now an SPM library product.** It was a build target
+  re-exported through the umbrella, which meant another *package* could not link
+  it at all — SwiftPM can only depend on products. The map-rendering package
+  being built on this SDK has to resolve an offline venue's tiles, style and
+  GeoJSON from the offline store, so the product now exists. Nothing changes for
+  existing integrators: the umbrella still `@_exported`s it, so `import
+  Proximiio` sees exactly the same types as before, and the module's public
+  surface is unchanged. Unlike `ProximiioQuuppa` and `ProximiioBlueiot` — which
+  are products *and* excluded from the umbrella so a third-party RTLS vendor's
+  vocabulary stays out of every app — this is a linking exception, like
+  `ProximiioDevices`. See the 2026-09-10 amendment under *Umbrella-only
+  distribution* in `docs/DECISIONS.md`.
+- **`GeoMath` is public**, in part. The coordinate math that goes with the
+  already-public `ProximiioCoordinate` was package-internal, so clients and our
+  own apps could not reach it — which did not stop anyone, it just produced
+  about eight hand-rolled re-derivations of haversine, bearing and
+  metres-per-degree across the two first-party apps, each free to get the
+  bearing convention or GeoJSON's `[longitude, latitude]` ring order wrong on
+  its own. Now public, all documented with units, argument order and convention:
+  - `GeoMath.meanEarthRadiusMeters` — `6 371 000 m`, the single radius behind
+    every public function here, exposed so a caller can reproduce our numbers.
+  - `GeoMath.metersPerDegreeLatitude` — `111 194.93 m`, constant everywhere.
+  - `GeoMath.metersPerDegreeLongitude(atLatitude:)` — the same figure scaled by
+    `cos(latitude)`, because longitude degrees shrink towards the poles.
+  - `GeoMath.haversineDistance(from:to:)` — great-circle metres, ignoring floor.
+  - `GeoMath.bearing(from:to:)` — compass degrees in `(-180, 180]`: `0` is true
+    north, `+90` east, clockwise. Argument order reverses the heading.
+  - `GeoMath.angularDifferenceDegrees(_:_:)` — wrap-safe difference in
+    `[0, 180]`.
+  - `GeoMath.isPointInPolygon(_:polygon:)` — ray casting against a GeoJSON ring
+    of `[longitude, latitude]` pairs.
+
+  The rest of the type stays `package` deliberately, because it is the *how*
+  rather than the *what* and we may want to change it: the MapLibre Turf-parity
+  snapping family (`distance`, `destination`, `nearestPointOnLine`,
+  `lineIntersects`, `NearestPointResult`), `distanceToPolygonBoundary` (a
+  local-planar approximation tuned to the geofence scale), and the `BoundingBox`
+  / `isDefinitelyOutside` prefilter (whose conversion constant is deliberately
+  wrong in the safe direction).
+
+  `GeoMath` holds **two** Earth radii and they are still not unified:
+  `6 371 000` for the haversine/geofencing family (Android `GeofenceManager.kt`
+  parity) and `6 373 000` for the Turf snapping family (`PxRoutableSnapping`
+  parity). Unifying them would move every snapped position by 0.031 % — 3.1 cm
+  per 100 m, 31 cm per km — and break the cross-platform parity those ports
+  exist for. Only the first is published, so the public contract holds exactly
+  one radius and one distance function; the constants were renamed to
+  `meanEarthRadiusMeters` and `turfEarthRadiusMeters` (was `earthRadius` and
+  `earthRadiusMeters`, which were indistinguishable at a call site).
+- **`ProximiioConfiguration.relayOnly(token:runsInBackground:)`** — preset for apps whose
+  positions come from an attached relay provider (a Blueiot wristband, a Quuppa
+  badge: the venue's anchors locate the tag and the phone only receives the
+  answer). Switches off Eddystone/iBeacon scanning, UWB and the native location
+  source, so `start()` builds no `BLEScanner` and shows no Bluetooth or location
+  prompt. Everything else is `.default(token:)`, and the result is a plain value
+  the host keeps adjusting. The trade is the beacon fallback that would take
+  over the blue dot while such an app is backgrounded — correct to lose when the
+  tracked thing is a band rather than the phone. Documented in the permissions
+  guide's "Apps that never scan".
+  The `runsInBackground` parameter (default `false`, so the shipped behaviour is
+  unchanged) additionally sets `allowsBackgroundLocationUpdates` and nothing
+  else. That one flag starts the native source purely as a keep-alive —
+  `nativeLocationEnabled` stays `false`, so none of its fixes reach the engine —
+  because iOS suspends a backgrounded app unless an active location session
+  entitles it to keep executing, and a suspended app's relay socket is a dead
+  socket. It needs `location` in `UIBackgroundModes`, a When-in-use
+  authorization the host asks for itself, and the relay provider created with
+  `runsInBackground: true` as well; Always is only for surviving termination.
+- **`BlueiotCloudRelayConfiguration.runsInBackground`** (default `false`) — the
+  cloud relay provider now reports the configured value instead of a hardcoded
+  `false`, so an app that has arranged background execution can keep being
+  positioned by the relay while backgrounded. Left `false` the facade still
+  pauses the socket on `didEnterBackground` and resumes it on foreground, which
+  is the right trade for a phone in a pocket. Setting it `true` alone changes
+  nothing: it stops the SDK pausing the source, it does not grant the process
+  time to run — pair it with `relayOnly(token:runsInBackground: true)`.
+- **`BlueiotCloudRelayClient.Diagnostics.latestRelayReceivedAt`** and
+  `latestProducerReceivedAt` — the two receipt stamps the relay carries on
+  every fix, as `Date`s. Against `latestSampleAt` (the phone's arrival clock)
+  the relay stamp gives an app its transport latency; the producer stamp rides
+  along because one producer has been seen minutes ahead of its relay, and the
+  gap between the two is the clock audit an integrator needs before believing
+  either.
+- **`BlueiotCloudRelayMessage.Relative.positioningIndicator`** and three new
+  `BlueiotCloudRelayClient.Diagnostics` fields — `latestConfidence`,
+  `latestPositioningIndicator`, `latestEngineFloor`. The relay carries two
+  uncertainty signals from the engine on every fix; the decoder dropped one
+  silently (it was missing from the CodingKeys) and never read the other, which
+  is why every app on this path draws a constant accuracy ring. They are now
+  decoded and exposed **raw** — the live relay shows `confidence 0` and
+  `positioningIndicator 34` for a well-grounded tag, and neither has a published
+  meaning in metres — so a venue walk can record their distribution before
+  anyone maps them to an accuracy. The engine floor number rides along for the
+  ground-floor-knob check.
+- **`BlueiotCloudRelayPositionProvider` (module `ProximiioBlueiot`)** — a third
+  way to be positioned by a Blueiot venue, next to the direct engine socket and
+  the LAN `RelayPositionProvider`. A Proximi.io cloud relay
+  (`blueiot-cloud-relay`, protocol `blueiot-coordinates-v1`) sits beside the
+  LocalSense engine, grounds its local metres onto WGS-84 and republishes every
+  tag as JSON over the internet; the provider opens `wss://host/stream` with the
+  relay's `STREAM_TOKEN`, follows one tag, and hands its grounded fixes to the
+  SDK as custom samples stamped with the phone's clock (the engine's was seen
+  six minutes off). One WebSocket with backoff, a snapshot-poll fallback after
+  three dead connections, de-duplication on `wgs.timestamp`, and diagnostics
+  that say "relay refused the token" rather than a bare 401 and list every tag
+  the relay currently holds. Shipped with `BlueiotCloudRelayConfiguration`,
+  `BlueiotCloudRelayEndpoint` (a bare host becomes `https://`),
+  `BlueiotCloudRelayClient`, `BlueiotCloudRelayMessage` and
+  `BlueiotCloudRelaySampleMapping`; the wire format is pinned by fixtures
+  captured from the live relay. Moved here from the Blueiot demo app so the
+  management app can share it.
+- **`Proximiio.setWayfindingJoinTolerance(meters:)`** and
+  `WayfindingRouter.joinToleranceMeters`. On-device routing stitched path ends
+  only within 0.75 m; venues traced with 1–3 m gaps at junctions fell apart into
+  islands and every route came back `.disconnected` although the corridors
+  visibly meet. The tolerance is now a runtime knob that rebuilds the graphs from
+  the installed network at once.
+- **`ProximiioLiveView` — an opt-in forwarder of positions to a customer-hosted
+  LiveView map.** Link the product and a browser can watch a device move around
+  the venue in real time; do not link it and the app makes no requests. There is
+  no default base URL, no default token and no derived device identifier: these
+  are live positions of a real person, and each of the three is a decision a host
+  states out loud.
+
+  It is latest-wins rather than accumulate — the map draws the current dot, so
+  the uploader coalesces to at most one upload a second and always sends the
+  newest fix. The bounded queue is for the other case, the network being away,
+  and it drops the *oldest*: after a gap the newest fix is the one worth having.
+
+  The response semantics are the part worth reading. A partially valid batch
+  still returns `200` — the server keeps the good samples and reports the bad
+  ones — so `accepted > 0` is success and `rejected > 0` is logged, never
+  retried; re-sending would loop one permanently malformed sample forever. `400`
+  is dropped, `401` stops uploading rather than hammering someone else's server,
+  and `5xx` retries with jittered backoff, because a venue full of phones that
+  lost the same server must not come back as a thundering herd.
+
+  It reuses the package's `APIClient` rather than wrapping `URLSession` again,
+  which means the deliberate refusal to send a bearer token to a cleartext
+  non-loopback host applies here too: test against the Simulator, whose
+  `localhost` is the Mac's, or terminate TLS in front of the server.
+
+  `ProximiioCore`'s bounded, cadence-gated report queue is now generic
+  (`PositionReportBuffer`) so both visitor reporting and this uploader share one
+  implementation. `VisitorReportBuffer` remains as a typealias.
+
+- **The SDK can now say the venue connection was lost.** A relay-fed app whose
+  network drops had no supported way to tell its user: the position stream just
+  goes quiet (it never finishes, nothing is buffered or replayed), the last fix
+  ages out of `customPositionDuration`, and on a `.relayOnly` configuration
+  nothing takes over. `ProximiioDiagnostics.noPositionReason` could not describe
+  it either — it reads `nil` for ever once any fix has been produced. Three
+  additions, at the two levels the answer actually lives at:
+  - **`CustomPositionProviderConnection`** (`online` / `offline` / `unknown`) and
+    `CustomPositionProviding.connection`, a protocol requirement with an
+    `unknown` default. A source that has not been taught to answer is never
+    reported as healthy *or* as lost.
+  - **`Proximiio.positionProviderConnections()`** — the link report for every
+    attached provider, the counterpart to `positionProviderStates()`: that one
+    says what the SDK is doing with a source, this one says what the source can
+    see. Also carried on `ProximiioDiagnostics.positionProviderConnections` and
+    named in the pasteable `summary`.
+  - **New enum case `NoPositionReason.positioningSourceOffline`** — every source
+    the SDK is *consuming* reports itself offline **and** the last fix has aged
+    past `customPositionDuration`. A dropped socket alone does not raise it (the
+    dot is still right, and reconnects are constant); a fresh position from any
+    source clears it, so a hybrid venue whose beacons keep solving never sees it
+    while a venue-fed app does. A provider the facade paused for the background
+    gets no vote — that silence is the SDK's own doing.
+
+  `BlueiotCloudRelayClient.connection` implements it for the cloud relay:
+  `online` from the first message of a connection until it ends, `offline` while
+  stopped, in reconnect backoff, or with a failing snapshot poll.
+
+### Fixed
+- **The binary distribution can be consumed without explicit Clang modules.**
+  The shipped `ProximiioBinary.swiftinterface` carried `import GRDB`, so any
+  toolchain that rebuilds that textual interface had to load GRDB's binary
+  `.swiftmodule`, which in turn requires GRDB's system-library Clang module
+  `GRDBSQLite`. SwiftPM passes that module map as a `-Xcc -fmodule-map-file=`
+  extra argument, and extra Clang arguments are not inherited by the
+  interface-rebuild sub-invocation — only Swift import search paths are — so
+  consumption failed with:
+
+  ```
+  ProximiioBinary.swiftmodule/arm64-apple-ios-simulator.swiftinterface:14:8:
+    error: missing required module 'GRDBSQLite'
+  ```
+
+  A package manifest cannot fix this: a dependency package may not use
+  `unsafeFlags`, and declaring GRDB's `GRDBSQLite` product explicitly changes
+  nothing. Xcode only survived it because explicit module builds (its default
+  since Xcode 16) precompile `GRDBSQLite` and hand it in; the same Xcode build
+  with `SWIFT_ENABLE_EXPLICIT_MODULES=NO` failed identically to the SwiftPM CLI.
+
+  The interface now does not mention GRDB at all. `SyncStore`'s GRDB-typed
+  initializer — a test-injection hook — is the only public declaration that
+  exposed a GRDB type, and it is the reason the import was printed at all;
+  `import GRDB` became `package import GRDB` inside `ProximiioCore`, which keeps
+  GRDB out of both the public and the private interface.
+
+### Changed
+- **`SyncStore.init(databaseQueue:)` is `package`, not `public`.** It exists to
+  let tests inject an in-memory `DatabaseQueue`; no integration can use it
+  without also depending on GRDB, and making it `public` forced `import GRDB`
+  into the shipped binary interface (see above). The two supported initializers,
+  `init()` and `init(path:)`, are unchanged.
+
+- **Relay samples are stamped with when the fix was measured, not when it
+  arrived.** `BlueiotCloudRelaySampleMapping` stamped every sample `timestamp:
+  now`, so after a reconnect a relay that replayed or re-served an old snapshot
+  produced a fix the staleness guard could not recognise as old — a silent jump
+  to a stale position, with only exact duplicates suppressed.
+
+  A measurement time *is* on the wire; what is not on it is any relation between
+  the venue's clocks and the phone's (the live capture has the engine six
+  minutes ahead of its own relay). The new `BlueiotCloudRelayFixClock` recovers
+  the fix's **age** instead of trusting an absolute stamp:
+  - **Skew-free** whenever the message carries `serverTime`: that and the tag's
+    `relayReceivedAt` are both the *relay's* clock, so their difference is an
+    age with no phone clock in it. Every `coordinate_snapshot` carries it, and so
+    does the whole polling path — exactly where an old snapshot comes from.
+  - **Estimated** otherwise, by the NTP min-filter: the smallest phone-to-venue
+    offset seen in the last two minutes is the best estimate of the true one, and
+    a fix's age is its excess over that. Ages come out `≥ 0`, so a sample can
+    never be stamped in the future, and a constant skew of any size cancels.
+    Offsets are tracked per venue clock (they are minutes apart) and the minimum
+    is kept over a sliding window, so a clock step is forgotten rather than
+    poisoning every later age.
+
+  Two guards follow from it. A tag is published only when its venue stamp moved
+  **forward** since the last published fix (equality was never enough: a
+  reconnect can hand back something *older* than what the app is drawing), and
+  only when it is younger than the new
+  `BlueiotCloudRelayConfiguration.staleAfter` — 10 s by default, matching
+  `customPositionDuration`; `0` restores the old publish-everything behaviour.
+  `BlueiotCloudRelayClient.Diagnostics` gains `latestFixAge`,
+  `latestFixAgeIsSkewFree`, `staleFixesRejected` and `repeatedFixesSuppressed`;
+  `latestSampleAt` is now the fix's measurement time rather than its arrival
+  time, and `latestFixAge` is the skew-corrected latency that
+  `latestRelayReceivedAt`/`latestProducerReceivedAt` only approximated.
+
+  **Wire-format limitation, deliberately not faked.** A `tag_coordinates` update
+  carries no `serverTime`, so the live-stream path falls back to the estimate.
+  The relay should send `serverTime` (relay-clock milliseconds at send) on
+  **every** message, not only on `coordinate_snapshot`; with that one field the
+  skew-free path covers the stream too and the min-filter becomes a fallback for
+  nothing.
+- **`allowsBackgroundLocationUpdates` no longer crashes a host that has not
+  declared the background mode.** CoreLocation treats setting that property in
+  an app whose Info.plist omits `location` from `UIBackgroundModes` as a
+  programmer error and raises an assertion — SIGABRT, from inside the SDK, on a
+  flag the *host* sets. `CLLocationManagerLocationUpdater` now checks the
+  Info.plist first (`CoreLocationSource.backgroundModesDeclareLocation(in:)`)
+  and, when the mode is missing, leaves the manager at `false` and logs one
+  warning naming the missing key. Hosts that do declare the mode see no change.
+- **Relay SSE stream never delivered an event.** `RelayURLSessionTransport` split the
+  stream with `URLSession.AsyncBytes.lines`, which drops empty lines — and the empty
+  line is what terminates a Server-Sent Event. Against a real relay the client
+  connected, received every `event:`/`data:` pair and dispatched nothing, with no
+  error. The transport now splits the bytes itself and hands every line over, blank
+  ones included (`SSELineSplitter`).
+- **Blueiot socket errors name the handshake outcome.** `URLSessionWebSocketTask`
+  reports every early death as POSIX 57 "Socket is not connected"; the error now
+  also carries the handshake's HTTP status (101 = upgraded) and the close code, so
+  a refused upgrade and an engine that hung up on the login frame read differently.
+- **On-device routing nodes crossing paths.** Two routing paths that cross — or one
+  that overshoots a junction by a metre or two instead of ending on it — shared no
+  vertex, so the corridors were either disconnected or linked only through the
+  overshooting end, which a route walked out and back: a 1–2 m spur the
+  instructions read as a sharp left/right pair. `RouteGraphBuilder` now inserts a
+  vertex at every segment crossing. On a real venue (91 ground-floor destinations)
+  this took the default 0.75 m tolerance from 0 to 89 routable destinations with
+  no spurs.
+
+- **The Blueiot geofence enter/exit flag was inverted, and there are four states,
+  not two.** The vendor's `LocalSense Client Communication Protocol (websocket)
+  V1.6.6` and the three official SDKs reached us and were audited line by line
+  against both our codecs (`docs/research/blueiot-protocol-verification.md`).
+  Page 24 item 12 gives `0 = go in area`, `1 = go out area`, `2 = disappear in
+  the area`, `3 = disappear in the area and appear again` — and the document's
+  own worked example transmits `00` for *"Enter the area"*. This SDK read `1` as
+  *entered*, so **every entry surfaced as an exit and every exit as an entry**,
+  and both disappearance states were folded into "exit", inventing a departure
+  for every tag that merely stopped reporting for a moment.
+  ``BlueiotGeofenceEvent/entered`` now means *"is the tag inside the area as of
+  this event"* and is correct; ``BlueiotGeofenceEvent/statusKind`` carries all
+  four states. If you wrote code that compensated for the old sense — an inverted
+  `!event.entered` — remove it.
+- **Frame `0x81`'s timestamp is not an epoch.** It is *milliseconds since the
+  engine's local 00:00:00* (p10 item 8). Running it through a magnitude heuristic
+  returns `nil` for every real sample, so `BlueiotConfiguration.sample(from:now:)`
+  refused every record as unreadable. Rebuilt from a calendar date via the new
+  ``BlueiotFrameCodec/date(fromMillisecondsSinceLocalMidnight:now:timeZone:)``,
+  including the next-day rollover the specification explicitly demands, against
+  the new ``BlueiotConfiguration/engineTimeZone``. The asymmetry is the
+  specification's and is deliberate: frame `0xB3`'s 8-byte timestamp *is*
+  epoch-ms and is unchanged.
+- **Frame `0xB4` no longer surfaces a `Z` coordinate.** Page 10 item 4 declares
+  the field *invalid* when the coordinates are latitude and longitude, which is
+  why the three official SDKs disagree about the divisor (C#/JS ÷1e7, C++ ÷100) —
+  the value is junk. The two bytes are still read, because the 27-byte stride
+  needs them; ``BlueiotTagRecord/z`` is now `Double?` and is `nil` there.
+- **Map transitions are no longer delivered as geofence events.** A `0xB3` whose
+  `AreaId` equals its `MapId` is a floor/map change (p24), not a zone somebody
+  drew. They now arrive on ``BlueiotEngineClient/mapTransitions()``.
+- **The engine's repeat pushes are deduplicated.** Each real transition is pushed
+  about once a second for five seconds with a frozen timestamp (p25), so one walk
+  through a door was delivered five times. Filtered on the exact
+  `(tag, area, status, timestamp)` tuple; the drops are counted in
+  ``BlueiotEngineClient/duplicateEventCount()``.
+
+### Added
+- **``BlueiotTagRecord/positioningTechnology`` and
+  ``BlueiotTagRecord/solvedDimensions``** — the trailing `Indicator` byte,
+  decoded at last (p11 item 10). The high nibble says whether the engine solved
+  that fix by **AoA** or fell back to plain beacon/RSSI; the low nibble says
+  whether it is a real 2-D/3-D fix or a degenerate 0-D one. A per-sample quality
+  gate the SDK had been carrying and discarding — and the cheapest confirmation
+  that ``BlueiotTagEmulator``'s broadcast is being solved the way it should be.
+- **``BlueiotError/engine(number:message:)``** — frame `0x99`, which carries an
+  error number and the engine's own message and which no client other than the
+  vendor's JavaScript SDK ever read. A rejected login used to reach this SDK as
+  ``BlueiotError/socketClosed(_:)``, exactly what a phone leaving Wi-Fi produces.
+  Counted in ``BlueiotEngineClient/errorFrameCount()``: non-zero means check the
+  credentials, not the network.
+- **``RelayGeofenceEvent/status``** (module `ProximiioQuuppa`) — the same four
+  states, from a relay running 0.3.1 or later. Optional and additive: a phone
+  reading only ``RelayGeofenceEvent/entered`` keeps working, and against a 0.3.1
+  relay starts reading *correct* booleans without an SDK release.
+- ``BlueiotFrameCodec/publishedSalt`` — the salt is a documented constant
+  (`abcdefghijklmnopqrstuvwxyz20191107salt`), not a per-deployment secret,
+  verified against the specification's own example digest. Not applied by
+  default, because a venue that authenticates without one today would break.
+- ``BlueiotFrameCodec/frameTypeName(_:)`` plus constants for the recommended
+  new-generation `0xC1`/`0xC4`/`0xC5` position frames and the rest of the
+  inventory, so ``BlueiotEngineClient/unknownFrameCount()`` is attributable — an
+  unmodelled frame is now logged by name, not just by byte. Decoding them is
+  deferred and documented in <doc:DirectBlueiotConnection>.
+- ``BlueiotFakeEngine`` reproduces the behaviours these fixes are about — the
+  documented `Status` values, map transitions, `0x99`, local-midnight timestamps
+  and a real `Indicator` byte — so a Simulator demo stays truthful.
+
+### Changed
+- ``BlueiotTagRecord/timestamp`` is now
+  ``BlueiotTagRecord/timestamp(now:timeZone:)``. A time of day cannot become an
+  instant without a date, and a property that read the wall clock to get one
+  would have broken this module's "nothing here reads `Date()`" rule.
+- ``BlueiotFakeEngine/geofenceFrame(tagID:tagName:areaID:areaName:mapID:mapName:status:timestamp:options:)``
+  takes the vendor's `status` byte instead of an `entered` boolean — a fake that
+  spoke in our booleans could only ever agree with our decoder.
+- Documentation across `ProximiioBlueiot`, `ProximiioQuuppa` and
+  `docs/research/blueiot-aoa-research.md` now cites the vendor specification
+  rather than the third-party reference. `vvvv/VL.BlueIOT`, which our codec was
+  transcribed from, turns out to be a near-line-for-line derivative of the
+  vendor's own C# SDK — which is why our codec was as accurate as it was, and
+  why it inherited exactly that SDK's bugs and none of its own.
+
+- Docs: `NSNearbyInteractionUsageDescription` and `NSCameraUsageDescription` are now listed as **always required** Info.plist keys in README/MIGRATION — App Store validation checks referenced APIs (NearbyInteraction, ARKit via UWB support), not runtime use (ITMS-90683 seen on a host app without them).
+
+### Added
+- **`ProximiioBlueiot` can make the phone itself a Blueiot tag.**
+  `BlueiotTagEmulator` advertises the vendor's app-tag protocol through
+  `CBPeripheralManager`, so an installed Blueiot AoA system tracks the phone and
+  `BlueiotPositionProvider` (or `RelayPositionProvider`) fetches that same id's
+  position back — the loop that turns a venue full of anchors into a blue dot on
+  iOS. Both protocol versions are supported: the general one (2-byte ids, one
+  128-bit service UUID per channel, plus the three dummy UUIDs that push TX Power
+  out of the packet) and the new one (server >= V2.1 and anchor firmware >= V4026:
+  4-byte ids, a 26-byte payload carried as thirteen pre-swapped 16-bit UUIDs,
+  with settable sleep and moving/still status bits). Every byte is transcribed
+  from the vendor package — `BlueIOT_iOS Development Instructions V1.1.docx`
+  §2.3 and the `BlueIOT_IOS_Demo` ObjC project — cited inline, and pinned by
+  hand-laid fixtures including the vendor demo's own example
+  (`tagId 12345`, ch37 -> `CB240898-BAD8-3353-9ED0-AC3039050975`). The payload
+  builder `BlueiotTagBroadcast` is pure and CoreBluetooth-free; the radio sits
+  behind the `BlueiotPeripheralAdvertising` seam with a public
+  `BlueiotFakeAdvertiser` double. **Foreground only, deliberately**: iOS moves a
+  backgrounded app's service UUIDs into the advertisement overflow area where
+  passive AoA anchors cannot see them, so the SDK does not ask host apps to
+  declare `bluetooth-peripheral` and does not pretend background tracking works.
+  See the module's `Making the phone a Blueiot tag` article.
+
+- **New opt-in product `ProximiioBlueiot`: a direct Blueiot engine client.**
+  For venues that cannot host `proximiio-rtls-relay` and whose phones must reach
+  the AoA engine themselves. `BlueiotFrameCodec` decodes the vendor's binary
+  frames (`0x81` batched positions in centimetres, `0xB4` native WGS84, `0xB3`
+  geofence transitions; head `0xcc5f`, CRC-16/MODBUS, tail `0xaabb`) and encodes
+  the auth + subscribe handshake; `BlueiotEngineClient` owns the
+  `localSensePush-protocol` WebSocket, the reconnect backoff and `pause`/`resume`;
+  `BlueiotPositionProvider` maps a record onto `CustomPositionSample` through a
+  per-`MapId` `BlueiotAffineTransform` (or WGS84 passthrough) and a `FloorNo`
+  floor map, and feeds the existing `CustomPositionProviding` seam under the name
+  `"blueiot"`. Not re-exported by the umbrella — add the product and
+  `import ProximiioBlueiot`. Every byte offset is ported from the relay's
+  `relay-ingest-blueiot`, itself read off the MIT-licensed `vvvv/VL.BlueIOT` at
+  `ffca3ce`, with the citations kept inline and the relay's own hand-laid byte
+  fixtures reused as tests. **The relay remains the recommended path**; the
+  module's `Direct Blueiot connection` article lists what is `[UNVERIFIED]`
+  (CRC on push frames, WGS84 axis order, geofence `Status` polarity, salted
+  password mechanics, default port, coordinate units, tag-id width, TLS) and
+  which knob fixes each. Ships `BlueiotFakeEngine`, a public scriptable engine
+  double whose position chunks are stamped **at emission** (the moral equivalent
+  of `RelayFakeServer`'s `{{ts}}`), so a scripted walk never ages past the
+  engine's custom-position window while a Simulator demo is open.
+- **Geofence events from the relay.** `RelayClient.geofenceEvents()` and
+  `RelayPositionProvider.geofenceEvents()` stream `RelayGeofenceEvent`s — zone
+  enter/leave transitions with a monotonically increasing `seq` — SSE-first via
+  `/v1/stream?events=geofence`, falling back to polling
+  `/v1/events?since=<seq>&limit=<n>` with a resume cursor. `since` is exclusive,
+  so the fallback (and a background round trip) is lossless; a relay ring-buffer
+  eviction shows up as a counted gap (`geofenceGapCount()`) rather than a
+  silently incomplete history. `RelayClient.events(since:limit:)` reads one page
+  directly. The stream is independent of the blue dot, and the SDK never acts on
+  a transition. Only Blueiot venues produce them today.
+- **External position providers now follow the app lifecycle.**
+  `CustomPositionProviding` gains `runsInBackground` (default `false`), `pause()`
+  and `resume()` — all three as **protocol extension defaults** (`false`,
+  `stop()`, `start()`), so every existing conformer keeps compiling and inherits
+  the safe behaviour. The facade pauses every provider that has not claimed the
+  background on `didEnterBackground` and resumes it on `willEnterForeground`;
+  a provider attached while backgrounded starts paused. New
+  `Proximiio.positionProviderStates()` returns
+  `[String: CustomPositionProviderState]` (`.running` / `.paused` / `.stopped`)
+  so a host can render activity rather than just registration.
+  `attachedPositionProviderNames()` is unchanged.
+  `QuuppaPositionProvider` / `RelayPositionProvider` implement `pause()`/`resume()`
+  natively — the loop is suspended and the SSE connection closed, while the
+  configuration, last sample and `lastError()` survive, and a resume re-arms with
+  a **fresh** backoff (and re-tries SSE after a fallback to polling). Opt out with
+  the new `QuuppaConfiguration.runsInBackground` /
+  `RelayConfiguration.runsInBackground` (default `false`); keeping one on needs a
+  legitimate background mode in the host app and iOS still throttles what runs
+  there — a test-tool affordance, not a promise. See `docs/DECISIONS.md`.
+- **`PositionUpdate.background`.** Every update the engine emits now carries
+  whether the host app was in the background when it was produced, stamped in the
+  one place updates are broadcast, so it is correct for BLE, native, custom, UWB
+  and PDR-fused fixes alike. The facade feeds the engine the same lifecycle
+  transitions that drive provider pause/resume (`PositioningEngine.setBackgrounded(_:)`);
+  it is `false` until told otherwise, and on any platform with no app lifecycle to
+  observe. Purely additive — the initialiser parameter is defaulted.
+
+### Changed
+- **The background handover from an external position source to beacons is now
+  immediate.** A `.custom` fix suppresses BLE/native solves for
+  `customPositionDuration` (10 s) — correct while the source is live, wrong the
+  moment it is not. Backgrounding an app whose AoA/UWB provider auto-pauses
+  therefore froze the blue dot for the rest of the window before the iBeacon /
+  Eddystone fallback could take over. The window now ends with the source: when
+  pausing for the background, detaching, or stopping leaves **no** attached
+  provider running, the facade revokes it and the next positioning tick solves
+  from beacons. Deliberately narrow — a provider that keeps running
+  (`runsInBackground: true`) still owns the dot, and a window the *host* opened
+  with `setCustomPosition(_:accuracy:floor:)` (or a simulated walk) keeps the full
+  duration it was promised. Nothing to configure, no public API added, and the
+  reverse direction is unchanged: the first sample a resumed provider emits
+  suppresses BLE again exactly as before. Venues previously advised to shorten
+  `customPositionDuration` to paper over the freeze should return it to the
+  default.
+- **`RelayConfiguration.streamURL(tags:)` / `streamRequest(tags:)` take a
+  defaulted `events:` filter**, and the initialiser takes defaulted
+  `eventsPollInterval` (2 s) and `eventsPageLimit` (100). Source-compatible —
+  omitting `events:` omits the query parameter, which the relay reads as "both
+  kinds" — but the mangled symbols moved, so the recorded baseline shows three
+  replacements. Deliberate pre-GA baseline change; see MIGRATION.
+- **`RelayFakeServer` grows a geofence half**: `setEventResponses(_:loops:)` for
+  `GET /v1/events`, `setGeofenceStreamAttempts(_:loops:pacing:)` and
+  `scriptGeofenceStream(…)` for the filtered SSE path, plus a new
+  `StreamChunk.idle` that holds a connection open instead of ending the script.
+  Requests are routed by path and by `?events=`, so both loops can be driven
+  against one fake.
+- **`Proximiio.attachPositionProvider(_:)` returns `Bool`** (was `Void`), and is
+  `@discardableResult`. `true` = armed and consuming; `false` = registered but
+  idle, which means either the SDK is not running or the app is backgrounded and
+  the provider does not run there. Never a failure to attach, and never a reason
+  to retry. Deliberate pre-GA baseline change; see MIGRATION.
+- **`QuuppaQPEClient.configuration` and `RelayClient.configuration` are
+  `nonisolated`**, as is `Proximiio.configuration`. All three are immutable
+  `Sendable` values; without the annotation every cross-module read cost an
+  `await` and an actor hop for a value that cannot change. Reading them from a
+  synchronous context now just works.
+- **`RelayFakeServer.stream()` paces its script.** `scriptStreamWalk(…)` now
+  emits one event every 0.5 s by default (through the fake's injected sleeper, so
+  a test pays nothing), instead of dumping the whole script into the stream —
+  which made an SSE Simulator demo render one teleport and then stand still. Pass
+  `pacing: .immediate` for the old behaviour, or `.hz(_:)` / `.interval(_:)` to
+  choose a cadence; hand-written scripts (`setStreamAttempts`, the initialiser)
+  still default to `.immediate`. `{{ts}}` is substituted per chunk under pacing so
+  a long walk does not age past `staleAfter` halfway through. `QuuppaFakeQPE` is
+  unchanged: its script is served one response per request, so the cadence is
+  already the client's poll interval.
+
+- **A public seam for external positioning sources.** `CustomPositionProviding`
+  (in `ProximiioPositioning`) plus `Proximiio.attachPositionProvider(_:)`,
+  `detachPositionProvider(named:)`, `detachAllPositionProviders()` and
+  `attachedPositionProviderNames()` promote the one-shot `setCustomPosition`
+  push into a first-class *continuous* input: a provider yields
+  `CustomPositionSample`s (coordinate, accuracy, an optional Proximi `floorID`,
+  a source timestamp) and the SDK owns everything else — one consumer task per
+  provider, floor-id resolution against the synced floors, a stale guard at
+  `positioning.customPositionDuration`, stop on `stop()` and re-arm on `start()`
+  while the registration survives the cycle. Samples arrive as
+  `PositionSource.custom`, so they arbitrate exactly as a manual push does and
+  drive route snapping, geofencing and wayfinding unchanged. This is the
+  recorded post-6.0 roadmap item; see `docs/DECISIONS.md`.
+- **`ProximiioQuuppa` — positions from a Quuppa Positioning Engine.** A new
+  **opt-in** library product (deliberately *not* re-exported by the umbrella —
+  add the product and `import ProximiioQuuppa`) that polls a QPE's REST
+  `getTagData` for one tag and feeds it through the provider seam:
+  `QuuppaConfiguration`, `QuuppaQPEClient` (actor; poll loop, error taxonomy,
+  2x backoff to a 30 s ceiling, reset on success), `QuuppaPositionProvider`,
+  `QuuppaTagRecord`/`QuuppaTagDataResponse` (tolerant decode of the verified
+  fields), `QuuppaAffineTransform` (six-parameter local-XY -> WGS84, solvable
+  from three surveyed points) and a `QuuppaHTTPTransport` seam. The poll
+  interval is clamped at 5 Hz, per Quuppa's own guidance. Coordinates come from
+  the record's WGS84 fields when the project is georeferenced, otherwise from
+  the affine transform; `locationCoordSysId` maps to a Proximi floor id.
+  Everything the public QPE documentation does not pin down — auth, the response
+  envelope, the `locationTs` unit, query-parameter names, the output format
+  name, the WGS84 field names — is configuration with a documented default, not
+  a constant. `QuuppaFakeQPE` (public, with the real published payload and a
+  scripted-walk generator) is the double the module was built against and the
+  one a host app's Simulator demo should use. See
+  <doc:FeedingPositionsFromQuuppa> and `docs/archive/quuppa-qpe-research.md`.
+- **`ProximiioQuuppa` — a vendor-neutral client for the Proximi RTLS relay.** The
+  same module now also consumes `proximiio-rtls-relay`, the daemon that speaks
+  Quuppa's REST and Blueiot's binary WebSocket on one side and one normalised
+  HTTP API on the other, so a single provider serves every vendor the relay
+  supports and a new vendor is a relay release rather than an SDK release:
+  `RelayConfiguration`, `RelayPosition` (the relay's `Position` contract,
+  forward-tolerant, RFC 3339 `ts` with or without fractional seconds, optional
+  `battery_pct` from relay v0.2.0), `RelayClient` (actor; `latest()` for
+  `GET /v1/tags/{id}/position` with `404` → `.tagUnknown` and `410 Gone` →
+  `.stale(lastSeen:)`, `snapshot()` for `GET /v1/positions`, and an SSE consumer
+  for `GET /v1/stream`), `RelayPositionProvider` (`CustomPositionProviding`,
+  registered as `"rtls-relay"`, with `latestRaw()` for the zones/battery/label a
+  positioning sample deliberately does not carry) and `RelayError`. SSE is the
+  default and keep-alive comments are ignored; a dropped stream reconnects with
+  a 2x backoff to a 30 s ceiling, and three consecutive stream failures fall the
+  client back to polling for the session rather than leaving the phone dark — a
+  buffering proxy is a deployment, not a crash. Streaming needed a shape the Qu1
+  request/response seam cannot express, so it is a **separate optional**
+  protocol, `QuuppaStreamingTransport`, plus `RelayURLSessionTransport` (which
+  conforms to both, with SSE-appropriate timeouts); a transport that only does
+  request/response simply polls. Client-side `staleAfter` (default 10 s) applies
+  to every position however it arrived, which matters most on SSE where nothing
+  re-asks. `RelayFakeServer` (public, both seams, scriptable events with
+  keep-alives and a mid-stream drop) is the double it was built against. See
+  <doc:FeedingPositionsFromTheRelay> and
+  `docs/research/blueiot-integration-feasibility.md` §Bu2.
+- **`ProximiioDevices` — the second firmware line, ALOHA-TWR.** Proximi ships two
+  firmwares for the same boards and the SDK now tells them apart:
+  `PRXDeviceName.Line` (`.fira` / `.alohaTWR`), the `PRX-TWR-T<n>` /
+  `PRX-TWR-A<n>` grammar (**decimal** id, canonicalised unpadded; `twrID`,
+  `shortAddress` is `nil` there), `PRXServiceInventory.line(for:)` /
+  `PRXDeviceIdentity.line` / `PRXDeviceSession.line` resolved from the service
+  inventory first and the name second, and `PRXAdvertisement.line` as the scan's
+  hypothesis. The `0x0201` stream, `0x0202`, `0x0204` and the whole DFU chain are
+  byte-identical, so nothing there changed; what the line lacks is now gated
+  rather than attempted — new `PRXDeviceFeature.provisioning` (the `0x0001`
+  service) plus `stsKeyProvisioning` / `tokenForm` answering `false`, a DFU that
+  no longer requires `0x0106` or `0x0203` to exist (an unverifiable version
+  reports `.done(installed: nil)` instead of `.verifyFailed`), and
+  `PRXTagTestRanging.init(twrTag:anchorIDs:…)`, whose `.allocateAndRange` fails
+  as `.unsupported` because there is no session to allocate. **The `anchor_id` in
+  a `0x0201` notification is a different namespace on each line** — a FiRa short
+  address against a small provisioned `twr aid` — so read
+  `PRXDeviceIdentity.anchorIDNamespace` (`PRXDeviceName.AnchorIDNamespace`)
+  before keying a venue's anchor map. `QANIProtocol` rejects ALOHA-TWR names
+  outright: that line has no Nearby Interaction, so the phone never ranges it.
+  `PRXSimulatedDevice.alohaTWRTag(id:anchorIDs:…)` and
+  `PRXSimulatedTagRanging.emitBlocks(_:anchorIDs:…)` are the fixtures.
+- **`ProximiioDevices` — one central, one scan, and a clock a host can drive.**
+  `PRXDeviceScanner.central` is public (`nonisolated`), so the transport behind
+  the fleet list is the one an update and a session run on rather than a second
+  `CBCentralManager` that CoreBluetooth treats as unrelated;
+  `PRXDFUEngine.init(scanner:…)` reads it. The engine now suspends that scan
+  itself — `PRXDeviceScanner.pause()` / `resume()` (list preserved, sweep
+  suspended, `PRXScannerEvent.paused` / `.resumed`) around every run, given a
+  `hostScanner`, and gives it back on `.done`, on a failure and on `cancel()`;
+  a scanner the host paused itself stays paused. `PRXManualClock`,
+  `PRXTickingClock` and `PRXScriptedSleeper` are public under `Simulation/`, so
+  a host app writes the same wall-clock-free tests the SDK does.
+- **`ProximiioDevices` — four edges the unit-detail screen asked for.**
+  `PRXDeviceSession.supports(_:)` answers the role / firmware-version /
+  capability gates the commands already applied — `PRXDeviceFeature` names the
+  nine of them — so a screen can disable a control instead of learning about the
+  refusal by sending the command; `clearStickyEvent()` and `identify()` now gate
+  on it. `PRXSimulatedDevice.degradedAnchor()` is the unhappy-path board (amber
+  health findings, red with `lastSaveFailed:`, a `0x0104` tail whose two rounds
+  are inside the §7.11 clearance plus one that has never ranged, one free slot,
+  firmware behind both version gates), and `PRXFakeConnectBehaviour.failWith(error:)`
+  scripts a connect failure a caller has to branch on rather than print.
+- **`ProximiioDevices` — test-ranging a tag at installation.** `PRXTagTestRanging`
+  brings one tag's UWB session up on one anchor while an installer is connected
+  and streams what happens: `protocol.md §7.11` phase discipline
+  (`PRXPhasePlacement` / `PRXPhaseSampler` — five `0x0104` reads 1.5 s apart,
+  per-session clustering, the start of the widest free arc with 55 ms
+  clearance, sent as `aim_ms`), the 24-byte `0x0102` carrying the tag's own
+  short address and STS key, the six-byte `0x0103` start, and verification
+  against the tag's `0x0201` stream over a 30 s window with the 60 s
+  acquisition grace and exactly one re-placement when the rate sits in the
+  35–65 % collide band. `stop()` sends the `0x0103` stop **before** the
+  caller's disconnect — a product anchor holds the slot across the link, so a
+  plain disconnect orphans a ranging session for ~70 s. `.observeOnly` writes
+  nothing at all, because adopting a running `session_id` stops it. New session
+  writes on `PRXDeviceSession` (`writeSessionParameters`, `sessionControl`) read
+  the in-band verdict back from `0x0104`, and the simulation gained a live OOB
+  arbiter and tag ranging engine (`PRXSimulatedAnchorSessions`,
+  `PRXSimulatedTagRanging`, `PRXFakePeripheral.setReadHandler`).
+- **Four edges the management app asked for after wiring its Devices screen.**
+  `ProximiioDiagnostics.ConfigurationSummary.uwbHealthPollSeconds` carries the
+  per-anchor health-read cadence and `summary` prints it next to the other UWB
+  knobs (`healthPoll: 30s`, or `off` — zero means the reads never happen, not
+  that they happen instantly); `PRXDeviceScanner.peripheral(for:)` and
+  `peripheral(identifier:)` hand back the **scanning** central's own link, which
+  is the one to open a `PRXDeviceSession` on; `PRXDeviceScanner.snapshots()` and
+  `events()` are `nonisolated`, so a view model subscribes from its initialiser
+  with no `await` and no actor hop — registration is synchronous, so nothing is
+  emitted into the gap, and a late subscriber opens on the list the scanner
+  currently holds; and `PRXDeviceName.isProvisionedAnchor` / `isProvisionedTag`
+  / `isProvisioned(as:)` do the by-role narrowing every caller of
+  `isProvisioned` was doing by hand.
+- **`ProximiioDevices` — firmware updates over BLE (SMP/mcumgr).** `PRXDFUEngine`
+  walks a PRX anchor or tag through the whole update as an explicit state
+  machine with an `AsyncStream<PRXDFUProgress>`: preflight on *this* connection
+  (capability bit, installed version, tag battery), the idle gate — an anchor
+  with live sessions is waited out, never overridden, because no stop-all
+  exists by design — enter-DFU, finding the unit again by the **SMP service
+  UUID at the same peripheral identifier** (never by name; the OS cache serves
+  the product name of a unit already in recovery), a fresh GATT browse, frame
+  sizing from `os mcumgr_params`, the upload, `os reset`, and confirmation that
+  the product services came back with the expected `0x0106`. A dropped link
+  costs only the packets in flight: the engine reconnects and continues from
+  the offset the **device** holds, never from zero, and
+  `resume(recoveryPeripheral:image:installed:)` is the same thing as an entry
+  point for a unit already parked in recovery. Failures are named for what an
+  operator can do about them (`PRXDFUFailure`), and a refusal at offset zero —
+  in either SMP refusal form — is reported as "this build is older than the
+  firmware on the device" with nothing erased. `SMPClient` is the mcumgr client
+  underneath: notifications enabled before the first request, frames split to
+  the link's write ceiling under `canSendWriteWithoutResponse` flow control,
+  responses reassembled by the header's `len`, `seq` matching, and a per-request
+  watchdog decided by the injected clock. `PRXFakeRecoveryPeripheral` answers
+  real SMP for tests and Simulator demos, with scripted refusals, mid-transfer
+  drops, a silent device and an `os reset` whose answer is lost. Nothing here
+  can brick a unit — MCUboot validates at every boot and falls back to the
+  resident recovery image — which the new "Updating firmware over BLE" DocC
+  article spells out along with the bench numbers and the iOS caveats.
+  `PRXFirmwareCatalogEntry` describes a release without its bytes (role,
+  version, size, digest, optional URL) so "which release is this, and did we
+  get the file we asked for" has one spelling until a catalogue endpoint
+  exists; the SDK still never fetches, and takes `Data`.
+- **`ProximiioDevices` — transport, scanner, device session, fake peripheral.**
+  The layer that puts the codecs on air: a CoreBluetooth seam
+  (`PRXPeripheralLinking`/`PRXCentralLinking` with `PRXCentralLink` and
+  `PRXPeripheralLink` behind it, on this module's own foreground central),
+  `PRXDeviceScanner` (one scan covering anchors, tags and units parked in
+  recovery, deduped by peripheral identifier and aged out on an injected clock
+  with a 3 s floor for the product build's advertising mux), and
+  `PRXDeviceSession` (connect → fresh discovery → classification → identity;
+  typed reads and notification streams; `provision(_:current:)` with the
+  field-by-field Write Requests, `0x7F` commit, read-back verification and the
+  one post-pairing retry; `enterDFU(tagToken:guardIdle:)` for both roles with
+  the busy, token and warm-reset branches). `PRXFakePeripheral`,
+  `PRXFakeCentral` and `PRXSimulatedDevice` ship **public** so hosts can run the
+  same flows in a Simulator demo, and are what the 109 new tests exercise —
+  no radio, no wall-clock sleeps.
+- **UWB anchors report which firmware they run.** Once an anchor starts ranging,
+  the SDK reads Proximi's `0x0106` firmware-version characteristic on the BLE
+  link ranging already owns, so `UWBAnchorSnapshot` now carries
+  `firmwareVersion: PRXFirmwareVersion?` and `build: UWBAnchorBuild?`
+  (`.product` / `.debug` / `.legacyQANI` / `.unknown`). `ProximiioDiagnostics`
+  counts the three in `uwbProductAnchorCount` / `uwbDebugAnchorCount` /
+  `uwbLegacyAnchorCount` and prints them in `summary` — which is how a venue
+  notices half its fleet is on debug images before a firmware rollout silently
+  skips them. Stock Qorvo `DWM3001CDK` boards have no such characteristic; they
+  answer once, are classified `.legacyQANI`, and are never asked again. Nothing
+  here can fail a ranging session: a missing service, a refused read or an
+  undecodable payload is a line in the anchor event log and a `nil` column.
+- **Optional per-anchor health polling.** `TrilaterationConfiguration.uwbHealthPollSeconds`
+  (default `0`, off) reads the anchor's 40-byte `0x0105` health payload on the
+  ranging link at the given cadence and publishes it on
+  `UWBAnchorSnapshot.health`: uptime, boot count and cause, freeze count,
+  round-success rate, sticky fault, and `session_owner`. Pick **30 s or slower**
+  — the firmware defers these reads to the thread that services the accessory
+  handshake, and the counters behind them move on the order of seconds at best.
+  Reads are only ever issued after `0x02 uwbDidStart`, never between `0x0A` and
+  `0x01`, so the handshake is never in contention with one.
+- **Public pause/resume of UWB ranging:** `Proximiio.uwbSuspend(anchor:)`,
+  `uwbResume(anchor:)`, `uwbSuspendAll()`, `uwbResumeAll()`. A Proximi anchor
+  accepts two BLE connections and a tag or a board in recovery accepts one, so
+  an app that wants to provision, inspect or update a board is competing with
+  the SDK's own ranging link for a slot on the very board it is servicing — and
+  the phone's Nearby Interaction session is exclusive on an anchor, so while it
+  runs every other UWB session on that board is evicted. Suspending sends
+  `0x0C stop`, tears the session down and drops the link while **keeping the
+  anchor's session slot**, and ignores its advertisements until you resume —
+  which matters specifically because a Proximi anchor keeps advertising with a
+  link open and would otherwise be reconnected within the second.
+  `uwbSuspendAll()` also holds anchors discovered while it is in force.
+  Suspension is visible on `UWBAnchorSnapshot.isSuspendedByHost` and
+  `UWBAnchorStateChange.isSuspendedByHost`, and is cleared by `stop()`.
+- **Proximi UWB anchors appear in Discovery as iBeacons.** Their factory-default
+  proximity UUID `50524F58-494D-492D-5557-422D414E4348` joins the four bundled
+  vendor defaults in `CommonBeaconUUIDs` — five of CoreLocation's twenty ranged
+  UUIDs, with caller-supplied UUIDs still seeded first. Without it a powered
+  anchor is invisible to a discovery session, because iOS strips Apple
+  manufacturer data from a raw scan and an iBeacon can only be seen by a session
+  that already ranges its UUID.
+- **`ProximiioDevices` — the byte-level codec layer for Proximi's UWB anchor and
+  tag firmware.** A new library target and product (re-exported through the
+  umbrella, so `import Proximiio` still suffices) carrying the GATT UUID map,
+  the provisioning TLV writer and 56-byte config record, the anchor OOB
+  capabilities/parameters/control/state/health payloads, the tag
+  measurement/control/status/features payloads, ATT-error mapping, and the
+  SMP/mcumgr + MCUboot layer a firmware update runs on — including a minimal
+  CBOR codec that decodes the indefinite-length maps the device actually sends.
+  Pure value types with no CoreBluetooth import, so every layout is pinned by
+  golden vectors on the macOS host.
+- No behaviour change for existing integrators: nothing in the positioning path
+  moved except `QANIProtocol`'s anchor-name canonicaliser, which now forwards to
+  `PRXDeviceName` and answers byte-for-byte what it answered before.
+
+### Fixed
+- **`PRXConfigDraft` no longer normalises a `role` / `ranging_policy` byte it
+  cannot name.** Both fields are now stored as the raw byte (`roleRaw`,
+  `rangingPolicyRaw`) and `diff(against:)` compares raw against raw, so a unit
+  running firmware newer than this SDK — one serving a value no `PRXDeviceRole` /
+  `PRXRangingPolicy` case names — round-trips it untouched instead of being
+  silently rewritten to `0xFF` / `0` by a save into an untouched form. Every
+  field a diff reports costs a flash commit on the device, so a spurious one is
+  not free. `role` and `rangingPolicy` stay source-compatible as non-optional
+  enum views (an unknown byte still *displays* as `.unset` / `.manual`) and only
+  move the storage when they are assigned; `PRXProvisioning.role(raw:)` /
+  `rangingPolicy(raw:)` write an arbitrary byte. **Requires the paired Android
+  SDK change** — until both ship, the two management clients disagree about what
+  an untouched save writes.
+- **The `ProximiioDevices` simulation now answers a commit the way the firmware
+  does.** A simulated tag's `0x0204` is computed per read, so bit 2 follows a
+  `0x0C` STS-key write and its clear instead of reporting the value the factory
+  call was built with; and a commit that moves `device_id` or `ble_name_suffix`
+  renames the fake unit to `PRX-A-<id>[-suffix]` and puts it back on air through
+  `PRXFakeCentral`, so a running `PRXDeviceScanner` sees the new name against
+  the same identifier — the live re-apply of protocol 1.3.0, no reboot.
+- **An unresponsive UWB board is no longer retried every fifteen seconds.** A
+  board whose Bluetooth stack answers while its UWB layer does not is parked
+  until it is power-cycled, and any advertisement used to un-park it — sound on
+  a Qorvo `DWM3001CDK`, which stops advertising while it holds a link, so an
+  advertisement really was proof of the reboot. A Proximi anchor allows two
+  links and keeps advertising with one open, so its advertisement proves only
+  that the radio is alive: a deaf board was un-parked, reconnected, given two
+  handshake timeouts and parked again, in a loop, against firmware that is
+  documented to wedge under exactly that churn. The retry is kept — a board that
+  really was power-cycled still rejoins on its own — but spaced by a doubling
+  backoff measured from the verdict (30 s, 60 s, 120 s … capped at 10 minutes)
+  that a successful ranging start resets.
+- **Proximi's own UWB anchors are visible to the ranging layer.** The QANI
+  accessory-name parser recognised only the stock Qorvo pattern
+  (`DWM3001CDK (XXXXXXXX)`), so a production anchor running Proximi's firmware —
+  which advertises the same QNIS service under `PRX-A-<6 hex>[-label]` — was
+  parsed as "not an anchor" and dropped at the scan, on every board. Both
+  patterns are now canonicalised: `PRX-A-00002a`, `PRX-A-00002A`,
+  `prx-a-00002a` and `PRX-A-00002a-LOBBY` all resolve to `PRX-A-00002a` (the
+  optional ≤ 8-character label is a human name an operator changes, so it is
+  dropped — identity is the board's 24-bit `device_id`), the unprovisioned
+  Zephyr default `PRX-A-0001` is accepted so a bench board can be ranged, and
+  `PRX-T-…` (tag) and `PRX-DFU-…` (recovery) stay rejected. Legacy
+  `DWM3001CDK-…` names are byte-for-byte unchanged, so no deployed venue is
+  renumbered. `ProximiioInput.metadata`'s `uwb.accessoryName` accepts every one
+  of those spellings. No public API change.
+- **UWB links now report the ATT MTU they negotiated.** The PRX anchor firmware
+  needs an ATT MTU ≥ 65 before it will carry QANI traffic, and iOS offers no way
+  to demand one — so a short MTU used to present as a board that connects, is
+  handed `0x0A`, and then never answers. The negotiated write ceilings are
+  logged when a link becomes ready, and a write-without-response ceiling below
+  62 bytes is logged as a warning (diagnostic only; ranging is not blocked).
+- **Resources created after first launch now arrive even when the audit change
+  log is empty.** Sync reconciles against the `/core/package` snapshot on any
+  pass where the audit delta brought nothing, instead of trusting the one-shot
+  bootstrap marker. An organization whose audit stream never receives its
+  `/core/inputs` writes (a backend defect, fixed separately) left the store
+  frozen at the moment of first launch: every tick truthfully logged
+  `0 changes applied`, and a newly registered UWB anchor stayed invisible to
+  positioning — reported as `anchorNotRegistered` — with no recovery short of
+  `resetAndRefresh()`. The reconcile is additive (upserts only, never deletes),
+  and skips the import entirely when the package is unchanged, so a steady venue
+  costs one conditional GET per sync interval and no store writes.
+
+### Changed
+- **Sync logs what it could *not* apply.** Each pass emits a single line —
+  `SYNC N changes applied`, extended to `…, M dropped (unknown-entity:X x1, …)`
+  when records carried entity names this SDK cannot project into an engine, and
+  annotated with `[snapshot reconcile: N upserts]` when the reconcile ran.
+  Previously such records were counted as applied and silently filed in a bucket
+  no reader queries. `ProximiioResourceType(auditEntity:)` is new public API: it
+  resolves the spelling variants the backend emits (tenant aliases such as
+  `Inputs` for `Input`, plural/lowercase forms, separators) so the engine
+  projection step no longer skips a whole entity kind without a word.
+- **Visitor reporting is now opt-in** (external audit H4): `visitorReportingEnabled`
+  defaults to `false` — a deliberate deviation from Android, which reports by
+  default. Indoor movement traces under a stable identifier are personal data;
+  the host app now opts in explicitly, and a runtime consent hook
+  `Proximiio.setVisitorReportingConsent(_:)` gates the reporting pipeline and
+  discards buffered samples on withdrawal (before the stop-flush, so withdrawn
+  data never uploads). Privacy zones and coordinate redaction are unchanged.
+- **Adaptive RSSI learning hardened against self-poisoning** (audit H2): the
+  learned per-beacon TX power now requires real calibration samples (or a much
+  higher pseudo-sample bar, default 20) before it can override a beacon's
+  advertised power, and is clamped to ±10 dB of the advertised value at use
+  plus an absolute [-90, -30] dBm band at update. Imported model snapshots
+  decay by age (7-day half-life) so stale learning must re-earn confidence;
+  old persisted snapshots still decode.
+- **Barometric floor detection no longer drifts with the weather** (audit H3):
+  the pressure reference tracks ambient with a 5-minute time constant, so only
+  fast changes (elevator/stairs) can trip the threshold, and floor commits
+  require a confidence gate (relaxed under beacon/PDR corroboration via
+  `noteVerticalActivity`). The new `positioning.floorDetection` section adds
+  per-venue `pressurePerFloorPa`, so 4.5–6 m storeys stop over-counting floors
+  traversed.
+
+### Added
+- **Immediate beacon anchor** (field feedback, occluded-beacon venues): opt-in
+  `positioning.trilateration.immediateBeaconAnchorEnabled` pulls the fused
+  position onto a beacon's configured coordinate whenever that beacon is ranged
+  inside `immediateBeaconAnchorEngageDistance` (default 2 m) for
+  `immediateBeaconAnchorDebounceTicks` consecutive BLE evaluations, and holds it
+  there until the beacon recedes past `immediateBeaconAnchorReleaseDistance`
+  (default 3.5 m; engage/release hysteresis). The pull is a tight EKF
+  measurement (`immediateBeaconAnchorAccuracy`, default 1.2 m) rather than a
+  teleport, converges within a tick or two, corrects accumulated PDR drift, and
+  works even when the anchor beacon is the only one audible. A strictly closer
+  qualifying beacon takes the anchor over without a release gap. Designed for
+  venues whose beacons are mounted so occluded that hearing one at all implies
+  standing next to it. In the engage→release hysteresis band the pull weakens
+  quadratically with range, so a user walking away from the anchor is held, not
+  dragged back (field feedback); stepping back inside the engage radius snaps
+  tight again. The diagnostics `ConfigurationSummary` now reports
+  `immediateBeaconAnchorEnabled`, the engage/release distances and the debounce
+  tick count (its `init` gained defaulted parameters — source-compatible) so
+  field exports show exactly which anchor tuning a walk ran with.
+- **`Proximiio.resetVisitorId()`** rotates the Keychain-persisted anonymous
+  visitor id and rebinds the reporter so the fresh id re-registers. Server-side
+  deletion of already-uploaded traces remains a separate backend request.
+- **`SyncEvent.storeRecreated(reason:)`** on `Proximiio.syncEvents()` — reports
+  that the local sync cache was rebuilt after corruption (diagnostic only).
+- **Adaptive-RSSI divergence telemetry**: diagnostics now report how many
+  beacons' learned TX power drifted beyond a threshold from their seeded value,
+  making venue-wide drift operator-visible.
+- **`ProximiioOffline` privacy manifest** declaring its DiskSpace
+  required-reason API use (reason E174.1) — the last target with a
+  required-reason API that lacked one.
+
+### Changed
+- **The RANSAC-seeded hybrid solve is now gated on range dispersion**
+  (`ransacHybridMinRangeDispersion`, coefficient of variation of the solve
+  window's model ranges, default 0.40; `0` disables — no Android equivalent).
+  On a flat range field (weak TX, path-loss n ≈ 0 venues) RANSAC's inlier vote
+  selects on noise rather than geometry, so those solves fall back to the plain
+  IRLS solve. Replay-validated on four field logs: 0.7–1.5 m RMSE improvement
+  on flat-RSSI venues, and venues where the hybrid helps get slightly better
+  (their occasional degenerate windows are suppressed too). Deliberately no
+  hysteresis: both branches share the IRLS refine, and a measured hysteresis
+  sweep only carried stale decisions into changed geometry.
+
+### Fixed
+- **Beacon discovery no longer reports a fake advertising interval for
+  iBeacons.** Their sightings come from CoreLocation ranging, which delivers
+  one batch per second regardless of the beacon's real setting, so the
+  gap-median "interval" always read ~1000 ms (a field team tuned beacons to
+  250 ms and saw a constant 1000). iBeacon rows now report no interval;
+  service-data/Eddystone advertisers, which are measured from raw scan
+  packets, are unaffected.
+- **A corrupt `sync.sqlite` no longer bricks `Proximiio.init`** (audit H6):
+  a corruption-classified open failure deletes the re-syncable cache and its
+  `-wal`/`-shm` sidecars and recreates it; corruption detected mid-sync
+  rebuilds the store in place and forces a cold resync, mirroring the existing
+  410 path. Permission and disk-full failures still surface unchanged —
+  previously the documented recovery (`resetAndRefresh()`) was unreachable
+  exactly when init threw.
+- **`ProximiioConfiguration.positioning`** — the positioning-engine tuning
+  section is now reachable from the public initialiser. Roughly 68 documented
+  knobs (the trilateration pipeline, EKF, emission gate, arbitration windows)
+  were previously unreachable: the facade always built engine defaults, and only
+  a test-only initialiser could inject a configured engine. We documented knobs
+  a customer had no way to set. `bleEvaluationInterval`,
+  `allowsSingleBeaconPositioning` and `pdrFusionEnabled` are now computed views
+  onto the same storage, so the two spellings can never disagree, and their
+  initialiser parameters became optional so a defaulted argument cannot silently
+  reset a host-tuned section.
+- **Unified error surface (`ProximiioFailure`).** The SDK threw seven unrelated
+  error enums, only one of which was a `LocalizedError`, plus GRDB's
+  `DatabaseError` as a bare dependency type. They now share a protocol carrying
+  a stable domain/code, a `ProximiioFailureCategory`, retryability and recovery
+  copy, and `ProximiioErrorReport(from:)` flattens any caught error — including
+  GRDB's — into something a host can present or send to telemetry without
+  importing our dependencies. Bridge cases (`ProximiioAPIError.transport`,
+  `SnapshotBootstrapError.payloadEncodingFailed`,
+  `OfflinePackageError.storageFailure`, `ProximiioError.storage`/`.underlying`)
+  preserve system errors that were previously flattened away — one of them,
+  a non-`URLError` in the API retry loop, used to escape untyped and skip
+  host failover entirely.
+- **Honest reported accuracy during dead reckoning** — four new
+  `TrilaterationConfiguration` knobs: `ekfPdrDriftFraction` (`0.06`),
+  `ekfUnanchoredDriftRate` (`0.02` m/s), `ekfMeasurementDecorrelationInterval`
+  (`10` s) and `ekfSingleBeaconMeasurementIsNovel` (`false`). Field evidence
+  (Dubai Hills Mall, 2026-07-28): across 2.8 minutes in which the SDK emitted
+  129 `pdrFusion` positions and exactly **one** BLE fix, the reported accuracy
+  *improved* from 10.8 m to 7.5 m. The log also holds 1437 beacon updates over
+  that window, so ~69 BLE ticks did call `LocationEKF.updateMeasurement` behind
+  the emission gate; consecutive solves shared 70–100 % of their beacon set, yet
+  each was folded in as an independent white-noise measurement. The filter now
+  (a) floors the position covariance at a drift budget that grows with the
+  distance and time dead-reckoned since the last accepted absolute fix, and
+  (b) lets an autocorrelated repeat correct the mean at full gain while refusing
+  to shrink the covariance below what the last genuinely novel measurement
+  justified. No Android equivalent — Android reports the raw covariance and has
+  the same optimism. Set the fraction/interval to `0` for the previous
+  behaviour. Additive only; no existing declaration changed.
+- **Bounded EKF heading variance** — new `TrilaterationConfiguration`
+  knob `ekfHeadingVarianceCeiling` (`(π/2)²` rad²). Making the covariance
+  honest (above) exposed the opposite error in the same field stretch: with no
+  beacons at all, 235 m of PDR took the reported accuracy from 10.0 m to
+  42.5 m — ~18 % of distance travelled, three times the 5–8 % that real PDR
+  drifts and that `ekfPdrDriftFraction` is calibrated on. `LocationEKF`
+  *assigns* the heading from the PDR input on every predict, so heading is an
+  exogenous input rather than an estimated state, but the filter kept adding
+  heading process noise to `P[heading][heading]` anyway. That variance
+  random-walked without bound and the motion Jacobian (`∂position/∂heading =
+  ±L`) fed it back into position every step, so position variance grew as `N²`
+  instead of `N` — double-counting the `(L·σ_θ)²` the per-step process noise
+  already carries. The heading variance is now assigned from the step's own
+  heading uncertainty (clamped by the new ceiling) and its stale
+  cross-covariances are cleared. The 235 m stretch now reports 10.0 m →
+  17.6 m, i.e. 6 % of distance. Additive only; no existing declaration changed.
+- **`PositioningEngine.Configuration.ransacSeed`** — optional fixed seed for the
+  RANSAC inlier search. Defaults to `nil`, which keeps seeding from the wall
+  clock (Android parity); production hosts should leave it alone. The replay
+  harness pins it so golden thresholds are stable.
+
+### Changed
+- **The positioning tick stopped allocating on the hot path.** It ran every
+  2.5 s for the lifetime of the app, background included, and rebuilt a `Set` of
+  registered beacon keys on each pass even though that set only changes in
+  `setInputs(_:)`; the resolved-beacon array grew without a reserved capacity;
+  and the RSSI median allocated three arrays *per beacon per tick* (`filter` +
+  `map` + `sorted`) — roughly 90 allocations a tick in a 30-beacon venue. The
+  key set is cached, the array is sized once, and the median is computed in a
+  stack buffer. Behaviour is unchanged: the median still selects the upper
+  middle element, which the replay harness' golden thresholds are calibrated
+  against, and the bundled replay stays bit-identical.
+- **The public API surface was audited and narrowed before GA (breaking for
+  anyone using internal plumbing).** `VERSIONING.md` promises stability across
+  the whole public surface, and 2125 non-SPI public declarations across 181
+  types was far more than the ~155 the SDK means to support. 47 types that are
+  internal plumbing — the networking/auth stack (`APIClient`, `AuthManager`,
+  `TokenProviding`…), audit-sync and integrity checking, visitor analytics
+  (`VisitorEvent`, `VisitorReportingClient`…), background-lifecycle platform
+  glue, offline package sourcing, plus `FloorManager`, `GeofenceEngine` and
+  `ProximiioDateParser` — are now `package`. Surface is 1874 declarations
+  across 134 types.
+  Most importantly, five entry points that let a host corrupt engine
+  invariants are no longer reachable: `PositioningEngine.evaluateTick()`,
+  `.reset()`, `.applyStillness()`, `.processExternalDisplacement(_:)` and
+  `PositioningEngine.init` — a host-constructed engine is precisely the
+  configuration in which the fusion invariants cannot hold.
+  `ProximiioConfiguration.defaultAPIBaseURL` and `.defaultAnalyticsPathPrefix`
+  were added (same values as before) so the facade initialiser stays public.
+- **CI gates the public API against a recorded baseline**
+  (`scripts/api-baseline.sh`, `api-baseline/*.txt`). Additions and removals both
+  fail the check, because "we widened the contract without noticing" is half of
+  what the gate is for. The baseline is a distilled, sorted list of public
+  declarations rather than the raw multi-megabyte digester dump, so a contract
+  change is a legible line in a diff — and `package`/internal declarations are
+  excluded, so internal refactors do not trip it.
+- **The binary artifact is reproducible and its dSYMs survive.** The xcframework
+  zip is built with normalised timestamps and `-X`, so rebuilding the same tag
+  produces the same bytes — previously a rebuild yielded a different checksum
+  than the one SwiftPM pins. `manifest.json` honours `SOURCE_DATE_EPOCH`.
+  `publish-binary-release.sh` now archives the dSYMs and attaches them to the
+  **private source** repo's release: the shipped dylib is stripped, so they are
+  the only way to symbolicate a production crash, and they previously lived only
+  in a local build directory. The script refuses to upload them to the
+  distribution repo, which becomes public at GA.
+- **Local checks match CI.** `make check` runs lint, tests, the API baseline and
+  the docs build with the same arguments CI uses; `make hooks` installs a
+  pre-commit hook limited to the fast checks (a hook slow enough to annoy is a
+  hook people bypass). CI also builds the docs site, whose link checker had
+  never run anywhere automated.
+- **Release tooling hardened for the RC cut.** `release.sh` now *fails* an
+  RC/GA cut when the CI or Release GitHub workflow is disabled (override with
+  `--allow-disabled-ci`) and identifies workflows by file path instead of
+  opaque numeric ids. CI runs on `macos-15`, selects the newest installed
+  Xcode ≥ 16 instead of a hardcoded `Xcode_16.2` path, and asserts the pinned
+  SwiftLint/SwiftFormat versions instead of silently taking whatever `brew`
+  installs. New `scripts/verify-binary-release.sh` smoke-tests a published
+  binary release: asset reachable, checksum matches the tagged `Package.swift`,
+  GRDB minimum consistent, and a scratch consumer compiles `import Proximiio`
+  for the iOS 15 simulator.
+
+### Added
+- **Beacon discovery API (`BeaconDiscoverySession`).** A standalone,
+  foreground-only survey/audit scanner, independent of the positioning pipeline,
+  for inventorying an existing (often undocumented, third-party) beacon
+  installation at a venue. It runs its own `CBCentralManager` scan with
+  `withServices: nil` + allow-duplicates (catching *every* service-data
+  advertiser, not just Eddystone) and a CoreLocation iBeacon ranging manager over
+  a UUID union of bundled common vendors (`CommonBeaconUUIDs` — Kontakt.io,
+  Estimote, Radius Networks, Minew/AirLocate), caller/portal-supplied UUIDs and
+  user-entered UUIDs added at runtime via `addUUID(_:)` (iBeacons are invisible
+  to a raw iOS scan, so only ranged UUIDs appear). Eddystone UID/TLM/URL parse
+  through the existing `EddystoneFrameParser`; unknown-vendor service-data
+  advertisers surface via a new `DiscoveredBeaconIdentity.serviceData(uuid:payloadPrefix:)`
+  wrapper (the positioning-side `BeaconIdentifier` ABI is unchanged). The session
+  feeds a dedicated `BeaconRegistry`, delegates `events()`/`tracked`, and adds
+  per-identity `DiscoveryStats` (first-seen, session median RSSI, advertising
+  interval estimate). CoreLocation `rssi == 0` ("uncomputable") samples are
+  discarded. Both hardware seams (`BLECentralManaging`, new `BeaconRangingManaging`)
+  are injectable for off-hardware unit tests. Convenience factory:
+  `Proximiio.startBeaconDiscovery(extraUUIDs:)`, which wires the org's
+  `customIBeaconUUIDs` into the union.
+- **`RSSIKalmanFilter` is now public** so a discovery/finder UI can smooth live
+  RSSI itself (promoted from `package`; no `package`-only types leak through its
+  public signatures).
+
+### Fixed
+- **PDR dead-reckoned backwards whenever the phone leaned past upright.** The
+  tilt-compensated compass azimuth is Android `getOrientation`'s definition —
+  the bearing of the device y axis — which is degenerate once the device stands
+  vertical: y points at the sky. Measured on a synthetic field, the reported
+  bearing equalled the true heading up to 90.0° of pitch and equalled
+  heading + 180° from 90.1° on, and it *stayed* inverted for as long as the
+  posture held. A phone in a pocket, or read while walking, therefore displaced
+  the user backwards for the whole walk. `headingFlipGuardEnabled` could not
+  help — it compares step to step, and a constant offset never arms it, so what
+  it suppressed were the symptoms of this at the moment the posture changed.
+  The bearing is now read from the device axis best conditioned at the current
+  tilt (Android's `remapCoordinateSystem` branch, which the original port left
+  out), controlled by the new `PdrConfiguration.headingPitchRemapEnabled`
+  (default `true`; disable to restore the previous behaviour exactly). The
+  correction covers pitch to roughly 135°, which spans every carried posture;
+  beyond that the device is tipping face-down, where which way "forward" points
+  depends on how it is carried, so those postures keep today's behaviour rather
+  than gaining a guess.
+- **A host-raised `minimumBeaconsForPositioning` was silently ignored.**
+  `PositioningEngine.init` unconditionally overwrote it with
+  `allowsSingleBeaconPositioning ? 1 : 2`, so a host demanding four-beacon
+  geometry got two. Clamping *down* stays (lowering the knob alone must not
+  half-enable single-beacon positioning — the opt-in flag is the single source
+  of truth), but a value above the floor now survives. Invisible until now
+  because the knob was unreachable; with `positioning` exposed it would have
+  been a user-visible defect.
+- **Positioning was not reproducible run-to-run.** `PositioningEngine`'s
+  resolved-beacon list came straight out of a dictionary walk, so its order
+  varied between processes (Swift seeds hashing per launch). Most of the
+  pipeline is order-insensitive, but the RANSAC-seeded IRLS hybrid draws
+  minimal samples *by index*, so an unstable input order silently changed which
+  consensus set won — two runs over byte-identical input differed by ~1 m RMSE
+  (measured 5.77–6.52 m on the same log). The list is now sorted by beacon id.
+  Field behaviour is unchanged in character, but a replay of the same log is
+  now bit-identical, which is what makes golden regression thresholds possible.
+- **The binary distribution could not be built.** `build-xcframeworks.sh`
+  staged *every* `Sources/**/*.swift` into the flattened `ProximiioBinary`
+  module, including the `proximiio-offline-fetch` executable target whose
+  `main.swift` has top-level statements — illegal in a library module, so the
+  archive aborted with "expressions are not allowed at the top level". The
+  executable target is now excluded from staging (it still ships separately as
+  the macOS CLI), and the stage step fails fast if it collects zero files.
+- **Binary consumers could resolve a GRDB too old to link.** The distribution
+  `Package.swift` advertised `from: "7.0.0"` and the podspec `~> 7.0`, while the
+  binary is compiled against whatever `Package.resolved` pins (7.11.1 today) —
+  a consumer resolving 7.0.x got undefined storage symbols at link time. The
+  minimum is now recorded at build time (`grdbVersion` in `manifest.json`) and
+  rendered into both manifests at publish time; rendering fails if any
+  `__PLACEHOLDER__` survives.
+- **Privacy manifests were merged from a hardcoded list.** A `PrivacyInfo.xcprivacy`
+  added to a new module would have been silently dropped from the shipped
+  binary (App Store review risk); they are now discovered under `Sources/`.
+- **PDR heading ran opposite to the compass (mirrored tracks).**
+  `CoreMotionIMUMapper` summed CoreMotion's `gravity` and `userAcceleration`,
+  but Android's `TYPE_ACCELEROMETER` — the convention the whole ported heading
+  pipeline assumes — measures the *reaction* force (flat face-up reads
+  **+9.80665** on Z, while CoreMotion's gravity vector is (0, 0, −1) g). The
+  sum negated the whole acceleration vector, which mirrored the
+  tilt-compensated magnetic azimuth (east ↔ west), flipped the gyro yaw-rate
+  sign, and swapped faceUp/faceDown placement. The mapping is now the negated
+  sum `−(gravity + userAcceleration) · 9.80665`, matching Android exactly. (An
+  intermediate `userAcceleration − gravity` form corrected the heading but
+  inverted the *dynamic* term and halved the acceleration signal the
+  step-detection pipeline was tuned on — a step-cadence regression; negating
+  the whole vector restores |a| exactly while keeping the reaction convention.)
+- **Stale "table"/"bag" placement during hand-held walking.** Device
+  orientation only (re)classified when the acceleration magnitude was within
+  2 m/s² of gravity — nearly never true mid-stride — so a placement captured
+  at rest stayed latched. Sustained walking-level magnitude variance now
+  re-classifies a stale flat `table` as a hand placement, which surfaces a
+  `placementChanged` event and (when the host enables it) the auto motion-only
+  policy — the mechanisms placement actually drives; step-detection thresholds
+  are unchanged (`recommendedParameters()` has no production caller). Release
+  is now symmetric (a brief quiet dip no longer disarms it), and a genuinely
+  resting phone is unaffected.
+- **Transient ~180° heading flips corrupted steps.** A new heading-flip guard
+  holds the gyro-propagated heading when a step-to-step heading jump exceeds
+  120° without matching integrated gyro rotation (field log: 5 flips in 90 s,
+  each reverting within 1–3 steps). Genuine about-turns pass through. The guard
+  is now robust across discontinuities: a >1 s IMU gap resets it (gyro rotation
+  across the gap is dropped, so a genuine post-gap turn is no longer held);
+  disabling PDR clears its state (a turn made while disabled is not held on
+  re-enable); and while it is inactive (guard disabled or an external heading
+  override active) its reference is no longer mutated, so it re-seeds fresh when
+  it next becomes active instead of comparing across the inactive window.
+- **BLE fixes claimed sub-metre accuracy from weak, biased ranges.** The IRLS
+  residual RMS collapses when RSSI-model ranges are mutually consistent but
+  all biased (venue log: +3…+11 m per-beacon path-loss residuals at
+  −85…−91 dBm, claimed ±0.6–1.1 m) — the EKF then dragged the fused position
+  backwards behind the lagging BLE estimate on every correction.
+  `GeometryAwareMeasurement.residualAwareAccuracy` now floors reported
+  accuracy at the range-residual dispersion — a *weighted* RMS over the
+  solver's own Huber/RANSAC weights (`sqrt(Σ wᵢ·rᵢ² / Σ wᵢ)`, median RSSI
+  inlier-filtered), so a correctly-rejected NLOS outlier does not falsely
+  widen a good fix. Weak-RSSI distrust lives one layer deeper, in
+  `AdaptiveRSSIModel`'s per-beacon range uncertainty (inflated by
+  `1 + perDb·max(0, threshold − rssi)`, knobs `bleWeakRSSIThreshold` /
+  `bleWeakRSSIAccuracyPerDb`), so weak beacons down-weight the *solve*
+  itself rather than only widening the final number. The PDR calibrator's
+  anchor trust gate receives the same inflated accuracy the EKF sees (was:
+  raw pre-inflation solver accuracy), so overconfident high-dispersion
+  solves no longer register as calibration anchors. Replay on the reporting
+  venue log (≥6-rep averages): RMSE ~6.4 → ~5.0 m, jumpiness ~9.1 → ~6.0.
+- **Indoor `native` GPS fixes no longer punch through fresh indoor fixes.**
+  A ±15 m native fix could be emitted 12 s after a ±0.7 m PDR-fusion fix,
+  yanking the position 3.5 m backwards. Native fixes are now suppressed while
+  a recent *absolute* indoor fix (BLE trilateration, default < 30 s) is at
+  least 3× tighter (both configurable). Dead-reckoned `pdrFusion` emissions do
+  NOT re-arm the window, so out of BLE coverage the fail-open genuinely
+  expires 30 s after the last BLE fix — pure-PDR drift cannot hold corrective
+  GPS out indefinitely. The anchor is stored atomically
+  (`lastIndoorFix: (at:accuracy:)` via one `recordIndoorFix` helper), and it
+  arms when a BLE solve updates the EKF — not only when the DistanceFilter
+  emits it — so a stationary user's coalesced BLE ticks (field: build 11,
+  1 emitted BLE fix in 80 s with 9 beacons visible) no longer let ±15 m
+  native fixes punch through while healthy corrections flow every 2.5 s.
+
+## [6.0.0-beta.30] — 2026-07-17
+
+### Added
+- **Fully-offline first launch for geofencing (offline seed → SyncStore).** The
+  bundled offline seed can now populate the runtime `SyncStore` on first launch,
+  so geofences, privacy zones, inputs, places, floors and departments work with
+  **no network at all** — previously they waited for the first online audit sync.
+  - `proximiio-offline-fetch` now also writes a `sync-snapshot.json` next to
+    `manifest.json` — a point-in-time export of the synced models fetched from
+    the SDK's own full-package endpoint (`/core/package`, the same one the online
+    cold sync bootstraps from). Pass `--no-snapshot` to ship map data only.
+  - `installBundledOfflineSeedIfNeeded(...)` (and `installOfflineSeed(...)`)
+    detect a bundled `sync-snapshot.json` and import it into the `SyncStore`
+    **atomically** before the online sync runs. The import is idempotent
+    (gated on the audit bootstrap marker — it never clobbers a store the online
+    sync has already advanced) and **delta-safe** (the seed still advances the
+    audit watermark to the package's version, so the first online sync is a delta
+    from that point, at worst re-applying a handful of rows already in the
+    snapshot — never a missed change). A corrupt snapshot fails cleanly with no
+    half-import, degrading to seeding from the first online sync.
+  - New `SyncStore.importSnapshot(_:)` and a shared `SnapshotBootstrap` parser
+    (reused by `AuditSyncClient`) guarantee the offline seed and the online
+    bootstrap populate the store identically.
+
+## [6.0.0-beta.29] — 2026-07-17
+
+### Added
+- **On-device wayfinding (R3): turn-by-turn instructions.** `ComputedRoute`
+  gains `instructions: [RouteInstruction]` — turn-by-turn steps derived
+  on-device from the route geometry (`GeoMath.bearing` deltas), in travel order
+  from `.start` to `.arrive`. Each `RouteInstruction` is pure data (`kind`,
+  `coordinate`, `distanceMeters` since the previous step, `level`) and carries
+  **no display strings** — mapping a `kind` to localized text is the app's job.
+  Turns are classified by signed bearing delta (slight 25°–60°, turn 60°–120°,
+  sharp ≥ 120°; clockwise = right, counter-clockwise = left); near-straight
+  vertices collapse into the next step, long straights drop a `.continueStraight`
+  milestone, welded-graph jitter (< ~2 m) is filtered, and floor transitions are
+  interleaved as `.levelChange` steps. Instructions ride on the existing result
+  for both single-level and cross-level routes (additive; default empty). A new
+  env-gated A/B parity harness (`WayfindingParityHarnessTests`, gated on
+  `PROXIMIIO_ROUTES_PATH` / `PROXIMIIO_LAYOUT_PATH`, optional server comparison
+  via `PROXIMIIO_SERVER_ROUTES_JSON`) validates seeded on-network pairs against
+  a real venue network.
+- **On-device wayfinding (R2): multi-level (cross-floor) routing.** A new
+  additive facade method `Proximiio.computeRoute(from:fromLevel:to:toLevel:)`
+  plans a walking route that crosses floors via level changers (elevators,
+  staircases, escalators, hills, ramps) — still **entirely on-device** and
+  fully offline once the network is cached. The per-floor R1 graphs are combined
+  into one multi-level graph with weighted level-transition edges: each changer
+  is associated with a floor when that floor's path network has a vertex within
+  a horizontal radius (`levelChangerRadiusMeters`, default 4 m), and consecutive
+  reached floors are linked at a distance-equivalent cost per change
+  (`levelChangeCostMeters`, default 15 m), so a nearer changer is preferred over
+  a longer walk to a far one. `ComputedRoute` gains `levelChanges: [LevelChange]`
+  (changer type, from/to level, coordinate) in travel order for rendering "take
+  the elevator to floor 2"; `level` is the origin floor. A cross-level request
+  that cannot be linked throws `WayfindingRoutingError.noRoute(.noLevelTransition)`
+  (new `NoRouteReason` case). Level changers are installed automatically from the
+  wayfinding GeoJSON by `loadRouteNetwork()` / `loadCachedRouteNetwork()`. The
+  existing single-level `computeRoute(from:to:level:)` is unchanged, and an
+  equal-level cross-level call delegates to it (no `levelChanges`).
+- **Prebuilt `proximiio-offline-fetch` CLI in the binary distribution.** The
+  build-time offline-package fetcher now ships as a **prebuilt universal macOS
+  binary** (`arm64` + `x86_64`) so binary-SDK customers — who consume the
+  xcframework and cannot build from source — can run it in an Xcode build phase
+  or CI step. `scripts/build-xcframeworks.sh` now also builds it (via the new
+  `scripts/build-offline-fetch-cli.sh`, `swift build -c release --arch arm64
+  --arch x86_64`), strips it, verifies the slices with `lipo -info`, and zips it
+  as `proximiio-offline-fetch-macos.zip` with its SHA-256 recorded under the
+  manifest's `cli` object. `scripts/publish-binary-release.sh` attaches that zip
+  as an additional GitHub Release asset on the distribution repo, and the
+  distribution README documents the download URL pattern, `chmod +x`, checksum
+  verification, and the Gatekeeper step for the (currently) **unsigned** binary
+  (`xattr -d com.apple.quarantine …`). Codesigning + notarization are noted as a
+  future GA task.
+
+## [6.0.0-beta.28] — 2026-07-16
+
+### Added
+- **On-device wayfinding (R1): single-level route computation.** A new additive
+  facade method `Proximiio.computeRoute(from:to:level:)` computes a walking route
+  across the loaded path network **entirely on-device** — no network request, and
+  fully offline once the network is cached (via `loadRouteNetwork()`,
+  `loadCachedRouteNetwork()`, or `setRouteNetwork(_:)`). It returns a
+  `ComputedRoute` (ordered on-network coordinates, total distance in meters,
+  per-segment breakdown, single level) and throws
+  `WayfindingRoutingError.noRoute(_:)` with a typed `NoRouteReason`
+  (`startOffNetwork`/`goalOffNetwork`/`disconnected`/`emptyNetwork`). The engine
+  (new in `ProximiioWayfinding`: `RouteGraph`/`RouteGraphBuilder`, `RoutePlanner`,
+  `WayfindingRouter`) builds a deterministic per-level graph from the routable
+  polylines — joining endpoints within a configurable tolerance (default ~0.75 m)
+  and splitting segments at T-junctions where a path ends on another's interior —
+  then runs A* with a geodesic heuristic, projecting the start/goal onto the
+  nearest edge. The graph is cached per network load and rebuilt on reload, and is
+  structured so multi-level transition edges (R2) can be added without rework.
+  Purely opt-in: existing behavior is unchanged unless you call it. R1 is
+  single-level only; multi-level routing and turn-by-turn instructions come later.
+- **Bundled offline seed: build-time fetch CLI + first-launch install.** A new
+  `proximiio-offline-fetch` executable target downloads a venue's offline package
+  into a bundle-ready directory (`manifest.json` + SHA-256-verified members) for
+  bundling as a folder reference:
+  `proximiio-offline-fetch --token <t> --output <dir> [--place <id>] [--api-url <url>]`.
+  It reuses `ProximiioOffline`'s fetch/verify pipeline via a new testable
+  `OfflinePackageFetcher` type, is idempotent (skips valid existing members), and
+  exits with distinct codes for a bad token, unknown place, checksum failure, or
+  disk error. A new additive facade method
+  `Proximiio.installBundledOfflineSeedIfNeeded(packageId:bundle:subdirectory:)`
+  installs that bundled seed on first launch — safe to call on every launch, it
+  no-ops when an equal-or-newer package is already installed (version gating is
+  delegated to the existing `installSeed`) and advances the audit watermark. The
+  seed makes map data available instantly offline; SyncStore entities (geofences,
+  inputs) still arrive via the first audit snapshot. Documented under
+  docs-site → Offline → "Bundling an initial package".
+- **CocoaPods distribution for the binary SDK (React Native consumers).**
+  `scripts/publish-binary-release.sh` now also renders `Proximiio.podspec` from
+  `distribution/Proximiio.podspec.template` and commits it to the distribution
+  repo alongside `Package.swift`. The podspec `vendored_frameworks` the single
+  `ProximiioBinary.xcframework` via an `:http` Release-asset source (the zip has
+  the `.xcframework` at its top level, so no zip-layout change was needed) and
+  verifies it with `:sha256` — the **same** digest SwiftPM pins via
+  `swift package compute-checksum`. A one-line `@_exported import ProximiioBinary`
+  source shim is compiled into the public `Proximiio` module (materialised at
+  install time via `prepare_command`, keeping the SwiftPM archive byte-identical)
+  so integrators keep writing `import Proximiio`. Customers reference the tagged
+  podspec directly: `pod 'Proximiio', :podspec => 'https://raw.githubusercontent.com/proximiio/proximiio-sdk-ios-binary/<tag>/Proximiio.podspec'`.
+  The podspec declares `GRDB.swift ~> 7` (matching the binary's GRDB 7 ABI);
+  because GRDB has not published 7.x to the CocoaPods CDN, consumers add a
+  one-line Podfile git override for GRDB 7 (documented in the distribution
+  README and `docs/RELEASING.md`). Verified with `pod lib lint`
+  (`--external-podspecs` supplying GRDB 7).
+
+## [6.0.0-beta.27] — 2026-07-16
+
+### Added
+- **Binary (xcframework) distribution pipeline.** Customers can now integrate the
+  SDK via SPM without access to source. `scripts/build-xcframeworks.sh` compiles
+  all sources into a single flattened `ProximiioBinary` module (source layout,
+  `Package.swift`, and the test suite in this repo are untouched — the flattening
+  runs in a throwaway staging dir; verified zero internal symbol collisions across
+  the eight modules) and produces an iOS device + simulator `xcframework` built
+  Release / whole-module with `BUILD_LIBRARY_FOR_DISTRIBUTION=YES`,
+  `ENABLE_TESTABILITY=NO`, stripped local symbols/debug info, public
+  `.swiftinterface` only, dSYMs withheld from the zip, plus a merged
+  `PrivacyInfo.xcprivacy` (precise-location + SystemBootTime), a
+  `swift package compute-checksum`, and a `manifest.json`. A separate
+  distribution repo (`proximiio/proximiio-sdk-ios-binary`, private until RC)
+  vends a `Package.swift` whose `binaryTarget(url:checksum:)` is wired to a
+  thin source `Proximiio` wrapper (`@_exported import ProximiioBinary` + GRDB),
+  so integrators keep writing `import Proximiio` and GRDB links from source.
+  `scripts/publish-binary-release.sh <version> [--dry-run]` tags, creates the
+  GitHub Release, uploads the zip asset, rewrites the distribution
+  `Package.swift`, and pushes. The two-step release flow and the flip-to-public
+  checklist are documented in `docs/RELEASING.md`. Templates live under
+  `distribution/`. Verified end-to-end: a scratch consumer `import Proximiio`
+  builds for the iOS Simulator against the shipped xcframework.
+
 ## [6.0.0-beta.26] — 2026-07-16
 
 ### Added

@@ -14,21 +14,77 @@ let package = Package(
         // Customers import the `Proximiio` umbrella. It is a thin SOURCE wrapper
         // that re-exports the precompiled binary and links GRDB from source.
         .library(name: "Proximiio", targets: ["Proximiio"]),
+
+        // ── shim products ────────────────────────────────────────────────
+        // READ THIS BEFORE ADDING ONE. A shim buys the NAME, not the
+        // ISOLATION.
+        //
+        // The binary is ONE module. `ProximiioBinary.xcframework` contains a
+        // single flattened `ProximiioBinary` built from every library module
+        // in the source package, and each shim below is one line of
+        // `@_exported import ProximiioBinary`. So a target that depends on
+        // `ProximiioCore` and writes `import ProximiioCore` still sees the
+        // whole SDK surface — `ProximiioConfiguration`, the positioning
+        // stack, all of it — and still links the whole dylib. Nothing here
+        // narrows what is visible or what is linked. Do not read these
+        // product names as module boundaries; they are aliases for one
+        // module.
+        //
+        // Real isolation would need one xcframework per module, which is the
+        // split we measured and decided against — every boundary becomes a
+        // hard optimisation barrier under BUILD_LIBRARY_FOR_DISTRIBUTION=YES
+        // and the sources carry no @inlinable/@frozen to cross it. See
+        // docs/binary-distribution-analysis.md.
+        //
+        // What a shim IS for: letting a downstream SwiftPM package name a
+        // dependency that matches its own structure, so it can be
+        // version-tagged instead of pinned to `branch: "master"`. Vend a name
+        // only when a real consumer names it — one per source module would
+        // read as thirteen boundaries that do not exist.
+        //
+        // `ProximiioCore` — proximiio-ios-map-v6's `ProximiioMapCore` target
+        // depends on `.product(name: "ProximiioCore", …)` to express that it
+        // uses the models/geometry vocabulary and not the positioning stack.
+        // It is the only SDK product name any downstream package asks for
+        // besides `Proximiio`, which is why it is the only shim here.
+        .library(name: "ProximiioCore", targets: ["ProximiioCore"]),
     ],
     dependencies: [
-        // GRDB is open source and carries no Proximi.io IP; it is compiled from
-        // source in the customer's build and satisfies the binary's storage
-        // symbols at link time.
-        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
+        // GRDB is open source and carries no Proximi.io IP. It is compiled from
+        // source in the customer's build, and the minimum is rendered at publish
+        // time from the exact version the binary was compiled against, so a
+        // consumer cannot resolve an older GRDB than the SDK was built with.
+        //
+        // It does NOT satisfy the framework's storage symbols: the shipped
+        // dylib already contains the GRDB it was compiled against (zero
+        // undefined GRDB symbols; SQLite comes from /usr/lib/libsqlite3.dylib).
+        // The public `.swiftinterface` does not reference GRDB either — it must
+        // not, or a consumer whose toolchain rebuilds that interface without
+        // explicit Clang modules fails with `missing required module
+        // 'GRDBSQLite'`, because SwiftPM cannot put GRDB's system-library module
+        // map on the search path the interface sub-invocation inherits.
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.11.1"),
     ],
     targets: [
         .binaryTarget(
             name: "ProximiioBinary",
-            url: "https://github.com/proximiio/proximiio-sdk-ios-binary/releases/download/6.0.0-beta.27/ProximiioBinary.xcframework.zip",
-            checksum: "2f4e2654ceedab4363efdb2c0bd3c2b98bdfcf012924fc23ce7fb4a432d0cd28"
+            url: "https://github.com/proximiio/proximiio-sdk-ios-binary/releases/download/6.0.0-beta.31/ProximiioBinary.xcframework.zip",
+            checksum: "84954914df1288a2068ca897f3cbb5e628e2f57bfb1e92a15b6ceef290a6d268"
         ),
         .target(
             name: "Proximiio",
+            dependencies: [
+                "ProximiioBinary",
+                .product(name: "GRDB", package: "GRDB.swift"),
+            ]
+        ),
+        // Shim. Same one-line body and the same dependencies as `Proximiio`
+        // above — it re-exports the same flattened binary. The GRDB dependency
+        // is not optional here either: a binaryTarget cannot declare it, so
+        // every source target that re-exports the binary has to carry it or
+        // the consumer's link is short the storage symbols.
+        .target(
+            name: "ProximiioCore",
             dependencies: [
                 "ProximiioBinary",
                 .product(name: "GRDB", package: "GRDB.swift"),

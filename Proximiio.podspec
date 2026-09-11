@@ -16,11 +16,23 @@
 #     via `prepare_command` — this keeps the SwiftPM binary archive
 #     byte-identical (same zip, same checksum for both toolchains);
 #   * GRDB links from source in the consumer build and satisfies the binary's
-#     storage symbols (matches the SwiftPM `from: "7.0.0"` pin).
+#     storage symbols (same minimum as the SwiftPM `from:` pin — both are
+#     rendered from the version the binary was compiled against).
+#
+# NO SHIM SUBSPECS, ON PURPOSE. The SwiftPM template vends shim products
+# (`ProximiioCore`) so a downstream SwiftPM package can NAME a dependency; they
+# are aliases for the one flattened module, not boundaries. That has no
+# CocoaPods equivalent worth building: a pod is ONE module (`module_name` is
+# pod-level, not per-subspec), so vending `import ProximiioCore` here would
+# mean a second pod wrapping the same xcframework — a second podspec, a second
+# install entry — to gain a name no CocoaPods consumer asks for. CocoaPods and
+# React Native integrators write `import Proximiio` and get the same whole
+# flattened surface either way, so nothing is lost. This asymmetry is
+# deliberate; it was not forgotten.
 
 Pod::Spec.new do |s|
   s.name             = 'Proximiio'
-  s.version          = '6.0.0-beta.27'
+  s.version          = '6.0.0-beta.31'
   s.summary          = 'Proximi.io iOS SDK — indoor positioning, PDR, geofencing, and wayfinding.'
   s.description      = <<-DESC
     Precompiled binary distribution of the Proximi.io iOS SDK: indoor positioning,
@@ -45,7 +57,7 @@ Pod::Spec.new do |s|
   }
 
   s.platform         = :ios, '15.0'
-  s.swift_version    = '5.9'
+  s.swift_version    = '6.0'
   # The binary interface is emitted in Swift 6 language mode with library
   # evolution, so consumers must build with Xcode 16+ / Swift 6 toolchain.
   s.cocoapods_version = '>= 1.10.0'
@@ -54,7 +66,7 @@ Pod::Spec.new do |s|
   # unzips the archive into the pod root; it contains `ProximiioBinary.xcframework`
   # at its top level. `:sha256` is the SHA-256 of the zip — the SAME value SwiftPM
   # pins via `swift package compute-checksum`, so both toolchains verify one digest.
-  s.source           = { :http => 'https://github.com/proximiio/proximiio-sdk-ios-binary/releases/download/6.0.0-beta.27/ProximiioBinary.xcframework.zip', :sha256 => '2f4e2654ceedab4363efdb2c0bd3c2b98bdfcf012924fc23ce7fb4a432d0cd28' }
+  s.source           = { :http => 'https://github.com/proximiio/proximiio-sdk-ios-binary/releases/download/6.0.0-beta.31/ProximiioBinary.xcframework.zip', :sha256 => '84954914df1288a2068ca897f3cbb5e628e2f57bfb1e92a15b6ceef290a6d268' }
 
   s.vendored_frameworks = 'ProximiioBinary.xcframework'
 
@@ -73,5 +85,7 @@ Pod::Spec.new do |s|
   CMD
 
   # GRDB (open source, no Proximi.io IP) links from source in the consumer build.
-  s.dependency 'GRDB.swift', '~> 7.0'
+  # Lower bound = the exact version this binary was compiled against (rendered at
+  # publish time); upper bound keeps the consumer inside the same major.
+  s.dependency 'GRDB.swift', '>= 7.11.1', '< 8.0'
 end
