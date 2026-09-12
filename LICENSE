@@ -1,14 +1,390 @@
-Proximi.io iOS SDK — Proprietary License (PLACEHOLDER)
+Proximi.io iOS SDK — Software Licence Agreement
+
+═══════════════════════════════════════════════════════════════════════════════
+DRAFT — PENDING LEGAL REVIEW. NOT YET THE OPERATIVE LICENCE.
+
+This text was drafted to be reviewed, not to be relied on. It has not been read
+by a lawyer. Before it is published in place of the previous placeholder,
+somebody with authority has to settle the decisions listed under "Open decisions"
+at the end of this file, and then delete this banner and that section. Until
+then, the licence that actually governs your use of the SDK is the separate
+written agreement between you and Proximi.io — see clause 7.
+═══════════════════════════════════════════════════════════════════════════════
 
 Copyright (c) 2026 Proximi.io. All rights reserved.
 
-This software and its accompanying binary artifacts (the "SDK") are proprietary
-and confidential. They are licensed, not sold. Use of the SDK is subject to a
-separate written commercial agreement between you and Proximi.io.
 
-THIS IS A PLACEHOLDER. Replace this file with the final commercial license text
-before the repository is made public at RC.
+1. WHAT THIS DOCUMENT COVERS
 
-THE SDK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT.
+1.1  "SDK" means the precompiled Proximi.io iOS SDK distributed from the
+     repository github.com/proximiio/proximiio-sdk-ios-binary: the
+     `ProximiioBinary.xcframework` attached to each release, the package
+     manifest, the podspec, the one-line source shims, and the accompanying
+     documentation. It does not mean the SDK's source code, which is not
+     published.
+
+1.2  "You" means the legal entity exercising the rights below, and every entity
+     that entity controls.
+
+1.3  The SDK is licensed, not sold. Proximi.io grants you the rights in
+     clause 2 and keeps everything else.
+
+
+2. LICENCE GRANT
+
+Subject to clauses 3, 7 and 11, Proximi.io grants you a non-exclusive,
+non-transferable, non-sublicensable, worldwide licence, for the term described
+in clause 11, to:
+
+2.1  download, install and store copies of the SDK;
+
+2.2  integrate the SDK into applications you develop ("your Applications") and
+     make copies of it as your build process requires;
+
+2.3  distribute the SDK, in its compiled form, embedded inside your Applications
+     — through the Apple App Store, TestFlight, Apple Business Manager, an
+     enterprise distribution programme, or any equivalent channel — to end users
+     of those Applications; and
+
+2.4  use the SDK internally for development, testing and support of your
+     Applications.
+
+2.5  No licence to end users. Your end users receive the SDK only as an
+     inseparable part of your Application. They get no rights in the SDK of
+     their own, and your Application's own end-user terms must not purport to
+     grant them any.
+
+
+3. WHAT THE LICENCE DOES NOT ALLOW
+
+Except where a mandatory law gives you a right that cannot be contracted away
+(and then only to the extent of that right), you must not, and must not permit
+anyone else to:
+
+3.1  reverse engineer, decompile, disassemble, or otherwise attempt to derive
+     the source code, algorithms, model parameters or internal design of the
+     SDK, whether by static analysis of the binary, instrumentation of it at
+     runtime, or any other means;
+
+3.2  extract, isolate, re-link or repackage any part of the SDK so that it can
+     be used outside one of your Applications — including lifting the
+     xcframework, or any object code, symbol or resource out of it, into
+     another library, framework, package, container or service;
+
+3.3  distribute, publish, sublicense, sell, rent, lease, lend or otherwise make
+     the SDK available as a library, SDK, package, component or hosted service,
+     whether on its own or bundled with other software. Clause 2.3 is the only
+     redistribution this licence permits: inside your Application, as part of
+     its compiled product;
+
+3.4  use the SDK, or anything you learn from it, to build, train, improve or
+     operate a product that competes with the SDK or with the Proximi.io
+     platform — including an indoor positioning, indoor wayfinding, or venue
+     mapping SDK or service;
+
+3.5  remove, obscure or alter any copyright notice, licence text, attribution,
+     product identifier or code signature in the SDK or in the third-party
+     components it brings with it;
+
+3.6  circumvent or disable any licence check, token validation, quota or usage
+     measurement in the SDK or in the Proximi.io services it talks to, or use
+     the SDK with credentials you are not entitled to use; or
+
+3.7  represent the SDK, or the positioning it produces, as your own technology
+     in a way that misstates its origin.
+
+
+4. THE PUBLIC REPOSITORY IS NOT A PUBLIC LICENCE
+
+4.1  The distribution repository is public so that Swift Package Manager and
+     CocoaPods can resolve it without credentials. That is a mechanical
+     necessity of how those tools fetch packages, not an offer of open-source
+     terms.
+
+4.2  Being able to read the repository, clone it, or download a release asset
+     gives you no licence to use the SDK. The rights in clause 2 exist only
+     while you hold a valid Proximi.io commercial agreement (clause 7). Absent
+     that agreement, any use beyond evaluating whether to enter into one is
+     unlicensed.
+
+4.3  The SDK is not open source, and nothing about the repository's visibility
+     makes it so. No open-source licence — permissive or copyleft — applies to
+     the Proximi.io portions of this distribution. The third-party components
+     in clause 8 carry their own licences, and those apply only to those
+     components.
+
+
+5. OWNERSHIP
+
+5.1  Proximi.io and its licensors own the SDK and every intellectual property
+     right in it, including the positioning, dead-reckoning, geofencing and
+     wayfinding methods it implements. Nothing in this licence transfers any
+     of that to you.
+
+5.2  You own your Applications and everything you write. Integrating the SDK
+     gives Proximi.io no rights in your code.
+
+5.3  This licence grants no trademark rights. You may state factually that your
+     Application uses Proximi.io technology; any other use of Proximi.io's
+     names or logos needs written permission.
+
+5.4  If you send Proximi.io feedback, bug reports or suggestions, Proximi.io may
+     use them without obligation to you. This does not give Proximi.io any
+     licence to your Applications or to your data.
+
+
+6. THE SDK NEEDS A PROXIMI.IO ACCOUNT
+
+6.1  The SDK does nothing useful on its own. It requires a Proximi.io account
+     and a valid token, and it works against Proximi.io services whose terms,
+     availability and pricing are set in your commercial agreement, not here.
+
+6.2  This licence does not entitle you to those services, to any service level,
+     to support, or to any future release of the SDK. Those come from the
+     commercial agreement, if it provides them.
+
+
+7. RELATIONSHIP TO YOUR COMMERCIAL AGREEMENT
+
+7.1  This file states the terms on which the binary SDK may be used. Your
+     separate written commercial agreement with Proximi.io — subscription
+     agreement, master services agreement, order form, or equivalent — states
+     the commercial relationship: fees, term, service levels, data processing,
+     support, and the like.
+
+7.2  Where the two conflict, the commercial agreement prevails, and this file
+     is read as narrowed or widened to match it. If your commercial agreement
+     grants you rights this file does not, you have those rights. If it imposes
+     restrictions this file does not, those restrictions apply.
+
+7.3  If you have no commercial agreement with Proximi.io, this file governs on
+     its own, and clause 4.2 applies: you have no licence to use the SDK in
+     production.
+
+7.4  This file is not an entire-agreement clause and does not replace anything
+     you have already signed.
+
+
+8. THIRD-PARTY COMPONENTS
+
+The SDK brings third-party software with it. Those components are licensed to
+you by their own licensors under their own terms, not by Proximi.io under this
+licence, and clause 3 does not restrict what those licences permit. Clause 9's
+disclaimer and clause 10's liability limits apply to them as they reach you
+through the SDK.
+
+8.1  GRDB.swift — MIT licence.
+
+     GRDB.swift (github.com/groue/GRDB.swift) is compiled into
+     `ProximiioBinary.xcframework`, and is also declared as a package
+     dependency so that it resolves in your own build. Either way, your
+     Application ships GRDB code.
+
+     The MIT licence requires that the notice below travel with every copy.
+     Reproduce it in your Application's acknowledgements or legal screen:
+
+     ────────────────────────────────────────────────────────────────────────
+     Copyright (C) 2015-2025 Gwendal Roué
+
+     Permission is hereby granted, free of charge, to any person obtaining a
+     copy of this software and associated documentation files (the "Software"),
+     to deal in the Software without restriction, including without limitation
+     the rights to use, copy, modify, merge, publish, distribute, sublicense,
+     and/or sell copies of the Software, and to permit persons to whom the
+     Software is furnished to do so, subject to the following conditions:
+
+     The above copyright notice and this permission notice shall be included in
+     all copies or substantial portions of the Software.
+
+     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+     THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+     DEALINGS IN THE SOFTWARE.
+     ────────────────────────────────────────────────────────────────────────
+
+8.2  SQLite — no obligation on you.
+
+     The SDK links SQLite through Apple's system library,
+     `/usr/lib/libsqlite3.dylib`. Proximi.io does not distribute SQLite to you;
+     Apple does, as part of iOS. Your use of it is covered by your Apple
+     developer agreements. SQLite itself is in the public domain and asks for
+     no attribution.
+
+8.3  Nothing else ships.
+
+     The SDK binary declares no dynamic dependency other than the Apple system
+     frameworks and `libsqlite3.dylib`, and embeds no third-party code besides
+     GRDB. In particular it embeds no third-party RTLS vendor SDK: the Quuppa
+     and Blueiot integrations are Proximi.io code speaking those vendors'
+     network protocols, not vendor binaries.
+
+     Documentation tooling used to build the SDK (swift-docc-plugin and
+     swift-docc-symbolkit, both Apache 2.0) is part of Proximi.io's private
+     build only. It is not in the binary and not in the published package
+     manifest, so it places no obligation on you.
+
+8.4  If a future release changes this list, the licence file shipped with that
+     release states the change. Check the file that came with the version you
+     ship.
+
+
+9. NO WARRANTY
+
+9.1  THE SDK IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTY OF ANY
+     KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+     WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE AND
+     NON-INFRINGEMENT.
+
+9.2  Proximi.io does not warrant that the SDK will be uninterrupted or
+     error-free, or that any position, heading, floor, geofence event or route
+     it produces will be accurate. Indoor positioning is an estimate derived
+     from radio and inertial signals, and its accuracy depends on the venue,
+     the hardware, the installation and the environment — things outside
+     Proximi.io's control.
+
+9.3  You must not use the SDK as the sole means of determining position where
+     an error could cause death, personal injury, or serious physical or
+     environmental damage. It is not designed, tested or certified for
+     navigation of vehicles or aircraft, for medical use, for emergency
+     response dispatch, or for any other safety-critical purpose.
+
+9.4  Clause 9 is capitalised because several jurisdictions require a warranty
+     disclaimer to be conspicuous for it to take effect. It does not exclude a
+     warranty that a mandatory consumer or commercial law gives you and does
+     not permit to be excluded.
+
+
+10. LIABILITY
+
+10.1 Proximi.io is not liable for indirect, incidental, special, consequential
+     or punitive damages, nor for lost profits, lost revenue, lost data, or
+     business interruption, arising out of or relating to the SDK, however
+     caused and on any theory of liability, even if Proximi.io has been advised
+     that such damage is possible.
+
+10.2 Proximi.io's total aggregate liability arising out of or relating to the
+     SDK and this licence is capped at the amount you paid Proximi.io under
+     your commercial agreement in the twelve months before the event giving
+     rise to the claim. [CAP — TO BE CONFIRMED: see Open decisions, item 3.]
+
+10.3 Nothing in this licence excludes or limits liability that cannot lawfully
+     be excluded or limited, including liability for death or personal injury
+     caused by negligence, and for fraud or fraudulent misrepresentation.
+
+10.4 You are responsible for your Applications: for what they do with the
+     positions the SDK produces, for the permissions they ask of their users,
+     and for their compliance with applicable law, Apple's App Store rules, and
+     data protection law. You will defend and indemnify Proximi.io against
+     third-party claims arising from your Applications, except to the extent
+     the claim is caused by the SDK itself.
+
+
+11. TERM AND TERMINATION
+
+11.1 This licence starts when you first download or use the SDK and runs for as
+     long as your commercial agreement with Proximi.io is in force.
+
+11.2 It terminates automatically if your commercial agreement terminates or
+     expires. Proximi.io may also terminate it on written notice if you breach
+     clause 3 or clause 4 and, where the breach can be cured, do not cure it
+     within 30 days of notice.
+
+11.3 On termination you must stop using the SDK in development, stop shipping
+     new versions of your Applications that contain it, and delete the copies
+     you hold. Proximi.io will not require you to recall or remotely disable
+     copies already installed on end users' devices; those copies may remain in
+     place, and clauses 3, 5, 8, 9, 10 and 12 keep applying to them.
+
+11.4 Clauses 3, 4.2, 5, 8, 9, 10, 11.3 and 12 survive termination.
+
+
+12. GOVERNING LAW AND DISPUTES
+
+12.1 This licence is governed by the laws of [GOVERNING LAW — TO BE DECIDED,
+     see Open decisions, item 2], excluding its conflict-of-law rules and
+     excluding the UN Convention on Contracts for the International Sale of
+     Goods.
+
+12.2 The courts of [FORUM — TO BE DECIDED, see Open decisions, item 2] have
+     exclusive jurisdiction, except that either party may seek injunctive
+     relief for infringement of intellectual property rights in any competent
+     court.
+
+12.3 If your commercial agreement names a governing law or forum, that one
+     applies instead, per clause 7.2.
+
+
+13. GENERAL
+
+13.1 You may not assign this licence without Proximi.io's written consent,
+     except to a successor of your whole business, on written notice.
+
+13.2 If a clause is held unenforceable, it is narrowed to the minimum extent
+     that makes it enforceable, or struck if it cannot be; the rest stands.
+
+13.3 A delay in enforcing a term is not a waiver of it.
+
+13.4 Proximi.io may publish revised licence terms with a future release. The
+     terms shipped in the release you use govern that release; they do not
+     change retroactively for releases you already shipped.
+
+13.5 Questions about this licence: support@proximi.io.
+
+
+═══════════════════════════════════════════════════════════════════════════════
+OPEN DECISIONS — resolve before publishing, then delete this section
+
+1. LEGAL ENTITY. "Proximi.io" is used throughout as the licensor. Replace it
+   with the registered company name, company number and registered address of
+   the entity that actually owns the SDK and contracts with customers. A
+   licence granted by a brand name rather than a legal person is weak.
+
+2. GOVERNING LAW AND FORUM (clause 12). Not decided, and deliberately not
+   guessed. Pick the jurisdiction of the licensing entity unless there is a
+   reason not to. Decide separately whether disputes go to courts or to
+   arbitration, and whether a customer's own commercial agreement is allowed to
+   override it (clause 12.3 currently says yes).
+
+3. LIABILITY CAP (clause 10.2). "Fees paid in the preceding twelve months" is a
+   common figure, not a decision anyone has made here. It is also incoherent
+   for a customer with a free or trial tier, who has paid nothing — decide
+   whether a floor applies. Confirm the cap is compatible with the cap in the
+   standard commercial agreement, since clause 7.2 makes that one prevail.
+
+4. WARRANTY POSTURE (clause 9). Drafted as a full "as is" disclaimer. Confirm
+   that is the intended commercial posture, and that it is enforceable in the
+   jurisdictions you sell into — in the EU, a business-to-business disclaimer
+   this broad is generally allowed, but a customer who resells to consumers may
+   push back. Clause 9.3's safety-critical exclusion should be checked against
+   what Proximi.io actually tells customers in sales conversations.
+
+5. THIRD-PARTY NOTICES PLACEMENT (clause 8). The GRDB MIT notice is reproduced
+   inline here because this LICENSE file is the only legal text the SDK's
+   release pipeline currently copies into the distribution repository — there
+   is no NOTICES.md on the SDK side, unlike the map package, which ships
+   NOTICES.md and ThirdParty-MapLibre-LICENSE.txt alongside its licence. A
+   separate NOTICES.md for the SDK would be cleaner and would match the map,
+   but it needs a one-line change to scripts/publish-binary-release.sh, which
+   was deliberately not made here. Decide which shape you want. See
+   docs/licensing-notes.md.
+
+6. TERMINATION AND SHIPPED APPS (clause 11.3). The draft says end users keep
+   working copies after termination. That is the customer-friendly reading and
+   almost certainly what you want commercially, but it is a choice: confirm it,
+   and confirm it does not conflict with the token/service shutoff that the
+   commercial agreement presumably allows on termination.
+
+7. CLAUSE 3.4 (COMPETING USE). Drafted broadly. Broad non-compete language in a
+   licence can be unenforceable in some jurisdictions and can scare off
+   customers who build adjacent products. Decide how wide it should really be —
+   in particular whether "anything you learn from it" survives review.
+
+8. CONSISTENCY WITH THE PODSPEC. `Proximiio.podspec` carries a short inline
+   licence summary (CocoaPods requires text inline, because the pod's `:http`
+   source contains only the xcframework zip). It says "licensed not sold,
+   subject to a separate written commercial agreement, see the LICENSE file".
+   That stays accurate against this draft; re-check it if clause 7 changes.
+═══════════════════════════════════════════════════════════════════════════════

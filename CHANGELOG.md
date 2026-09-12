@@ -6,6 +6,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.33] — 2026-09-12
+
+### Fixed
+- **The published xcframeworks carried invalid code signatures, and every
+  release before this one is affected (`6.0.0-beta.27` through
+  `6.0.0-beta.32`).** An app embedding them dies at launch with
+  `SIGKILL (Code Signature Invalid)` before its test host bootstraps, and the
+  error names nothing useful. SwiftPM's SHA-256 check passes throughout,
+  because a checksum proves the bytes arrived intact, not that they are signed.
+
+  Two separate defects produced the one symptom. Simulator slices are ad-hoc
+  signed by `ld`, and `strip -x -S` then shortened the Mach-O while leaving
+  `LC_CODE_SIGNATURE` untouched, so `codeLimit` described a longer file than
+  existed — `strip` warns about exactly this on stderr, and the build script
+  was discarding that output. The device slice was never signed at all:
+  `xcodebuild archive` emits `ios-arm64` without a signature, and `ld`'s
+  ad-hoc signing does not cover iOS device.
+
+  Frameworks are now signed per bundle immediately after `strip`, the last
+  step that mutates them. The signature is ad-hoc deliberately: dyld checks
+  integrity rather than identity, Xcode re-signs embedded frameworks with the
+  customer's own identity, and ad-hoc signing is byte-deterministic so the
+  "same tag rebuilds to the same checksum" property survives.
+
+  `verify-binary-release.sh` now checks `codesign -v --strict` per slice **and
+  per architecture** — a fat slice valid for one arch and broken for another
+  passes a whole-file check — with negative controls reproducing both verdicts
+  seen in the field.
+
+  **If you are on any earlier release, upgrade.** The older artefacts are not
+  usable in an app that runs tests.
+
 ## [6.0.0-beta.32] — 2026-09-12
 
 ### Added
