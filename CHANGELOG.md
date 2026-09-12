@@ -6,7 +6,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.32] — 2026-09-12
+
+### Added
+- **Four public additions the map package needed, so it does not re-implement
+  SDK plumbing.** Each removes a duplicate that already exists in both
+  first-party apps; all four are additive and the api-baseline diff carries
+  nothing else.
+  - `Proximiio.features() -> [ProximiioFeature]` — the venue's map features
+    (rooms, POIs, level changers, paths) read synchronously from the local
+    cache, next to `places()` and `floors()`. The cache is the one
+    `loadRouteNetwork()` already fills, so a renderer gets every feature from
+    the download the router was doing anyway instead of paging
+    `GET /v7/geo/features` a second time. Empty until that has succeeded once.
+  - `Proximiio.mapStyle() async throws -> Data` — the organization's MapLibre
+    style document, returned verbatim. The SDK now owns the endpoint, which is
+    the point: both apps built `GET /v7/geo/style` by hand, and that is how a
+    token once ended up in a query string. Here it travels in the
+    `Authorization` header.
+  - `Proximiio.amenities() async throws -> [ProximiioAmenity]` — the
+    icon-and-title taxonomy a feature's `properties.amenity` refers to, paged to
+    completion. A network read rather than a cache read, deliberately: amenities
+    are not in the resource set the sync pipeline fills, so a synchronous
+    accessor beside `places()` would return an empty array forever.
+  - `GeoMath.destination(from:distanceMeters:bearingDegrees:)` — the coordinate
+    reached by walking a distance along a bearing, on the public
+    `meanEarthRadiusMeters` sphere. It closes the loop with `haversineDistance`
+    and `bearing`, which is what an accuracy ring and a heading wedge need.
+    This is a **new** function, not the Turf-parity `destination` made public:
+    that one is bound to `turfEarthRadiusMeters` and would not round-trip with
+    the public distance function, so it stays `package`. See
+    `docs/DECISIONS.md`.
+
 ## [6.0.0-beta.31] — 2026-09-11
+
+### Fixed
+- **A geofence drawn in the management app is now monitored where it was
+  drawn, instead of never firing at all.** `/core/geofences` stores `area` as
+  an untyped object, and our own clients write two different shapes into it:
+  post a `polygon` ring and the API derives `area` as a `{lat, lng}` centroid
+  plus a `radius` (the shape this SDK was modelled on), while the management
+  app writes a GeoJSON geometry *object* into `area` and a circle's centre into
+  `location`. Handing that geometry object to a `{lat, lng}` decoder that fills
+  each missing member with `0` produced a geofence at `(0, 0)`: the record
+  decoded, `hasArea` was `true`, `radius` was `0`, and the engine's
+  zeroed-centre guard then made it permanently inert — monitored, evaluated on
+  every position update, never matching, and never logged. A circle authored
+  the same way lost its centre outright and was equally silent. This was not a
+  rendering bug: geofences are decoded for **monitoring**, so an affected
+  region never fired in a visitor's app and never appeared in analytics.
+
+  `ProximiioGeofence` and `ProximiioPrivacyZone` now read `area` deliberately
+  rather than assuming one shape. A `{lat, lng}` centre still decodes exactly
+  as before, including its historical tolerance for numeric strings and a
+  half-written pair. A GeoJSON `Polygon`, `MultiPolygon`, `Point` or `Feature`
+  is understood, with a ring read into `polygon` in the `[longitude, latitude]`
+  order that field already uses. A centre in `location` is read when nothing
+  else described a shape. An explicit `polygon` member still wins over
+  everything, so records the API derived are untouched.
+
+  Tolerant reading, strict writing: encoding is unchanged, and `location` is
+  read but never written.
+
+- **An `area` the SDK cannot recognise is now reported instead of guessed.**
+  New `ProximiioGeofence.geometryIssue` / `ProximiioPrivacyZone.geometryIssue`
+  (`ProximiioGeometryIssue`) say when `area` held something that is neither a
+  centre nor a usable outline (`.unreadableArea`), or an outline of fewer than
+  three distinct positions (`.degenerateOutline`). Both leave `area` and
+  `polygon` `nil` rather than inventing a coordinate — the invented `(0, 0)` is
+  precisely what kept the original defect invisible. The diagnostic describes a
+  decode, not a geofence, so it takes no part in equality and is never encoded;
+  `==` is now written out on both types for that reason.
 
 ### Changed
 - **The binary distribution no longer ships `ProximiioQuuppa`.** The
