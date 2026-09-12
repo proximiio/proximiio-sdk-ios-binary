@@ -15,9 +15,11 @@
 #     contains the xcframework zip, so the shim is materialised at install time
 #     via `prepare_command` — this keeps the SwiftPM binary archive
 #     byte-identical (same zip, same checksum for both toolchains);
-#   * GRDB links from source in the consumer build and satisfies the binary's
-#     storage symbols (same minimum as the SwiftPM `from:` pin — both are
-#     rendered from the version the binary was compiled against).
+#   * NO third-party pod dependency. GRDB is compiled INTO the xcframework
+#     (≈4 990 exported GRDB symbols, zero undefined; SQLite comes from
+#     /usr/lib/libsqlite3.dylib), so declaring `GRDB.swift` here only made
+#     CocoaPods build and link a second, unreachable copy into the app —
+#     ~600 KB and 52 duplicate ObjC class registrations at launch.
 #
 # NO SHIM SUBSPECS, ON PURPOSE. The SwiftPM template vends shim products
 # (`ProximiioCore`) so a downstream SwiftPM package can NAME a dependency; they
@@ -32,7 +34,7 @@
 
 Pod::Spec.new do |s|
   s.name             = 'Proximiio'
-  s.version          = '6.0.0-beta.33'
+  s.version          = '6.0.0-beta.34'
   s.summary          = 'Proximi.io iOS SDK — indoor positioning, PDR, geofencing, and wayfinding.'
   s.description      = <<-DESC
     Precompiled binary distribution of the Proximi.io iOS SDK: indoor positioning,
@@ -66,7 +68,7 @@ Pod::Spec.new do |s|
   # unzips the archive into the pod root; it contains `ProximiioBinary.xcframework`
   # at its top level. `:sha256` is the SHA-256 of the zip — the SAME value SwiftPM
   # pins via `swift package compute-checksum`, so both toolchains verify one digest.
-  s.source           = { :http => 'https://github.com/proximiio/proximiio-sdk-ios-binary/releases/download/6.0.0-beta.33/ProximiioBinary.xcframework.zip', :sha256 => 'a81043c88df44b89866d7e336038e73d5fb8afabe243e2b2e95a114e386472f2' }
+  s.source           = { :http => 'https://github.com/proximiio/proximiio-sdk-ios-binary/releases/download/6.0.0-beta.34/ProximiioBinary.xcframework.zip', :sha256 => 'a81043c88df44b89866d7e336038e73d5fb8afabe243e2b2e95a114e386472f2' }
 
   s.vendored_frameworks = 'ProximiioBinary.xcframework'
 
@@ -84,8 +86,7 @@ Pod::Spec.new do |s|
       > Sources/Proximiio/Exports.swift
   CMD
 
-  # GRDB (open source, no Proximi.io IP) links from source in the consumer build.
-  # Lower bound = the exact version this binary was compiled against (rendered at
-  # publish time); upper bound keeps the consumer inside the same major.
-  s.dependency 'GRDB.swift', '>= 7.11.1', '< 8.0'
+  # No `s.dependency` line, deliberately — see the header. The vendored
+  # xcframework already contains GRDB, and scripts/verify-binary-release.sh
+  # fails the release if a GRDB dependency reappears in either manifest.
 end

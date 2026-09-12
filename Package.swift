@@ -12,7 +12,7 @@ let package = Package(
     ],
     products: [
         // Customers import the `Proximiio` umbrella. It is a thin SOURCE wrapper
-        // that re-exports the precompiled binary and links GRDB from source.
+        // that re-exports the precompiled binary — one line, no dependencies.
         .library(name: "Proximiio", targets: ["Proximiio"]),
 
         // ── shim products ────────────────────────────────────────────────
@@ -49,46 +49,46 @@ let package = Package(
         // besides `Proximiio`, which is why it is the only shim here.
         .library(name: "ProximiioCore", targets: ["ProximiioCore"]),
     ],
-    dependencies: [
-        // GRDB is open source and carries no Proximi.io IP. It is compiled from
-        // source in the customer's build, and the minimum is rendered at publish
-        // time from the exact version the binary was compiled against, so a
-        // consumer cannot resolve an older GRDB than the SDK was built with.
-        //
-        // It does NOT satisfy the framework's storage symbols: the shipped
-        // dylib already contains the GRDB it was compiled against (zero
-        // undefined GRDB symbols; SQLite comes from /usr/lib/libsqlite3.dylib).
-        // The public `.swiftinterface` does not reference GRDB either — it must
-        // not, or a consumer whose toolchain rebuilds that interface without
-        // explicit Clang modules fails with `missing required module
-        // 'GRDBSQLite'`, because SwiftPM cannot put GRDB's system-library module
-        // map on the search path the interface sub-invocation inherits.
-        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.11.1"),
-    ],
+    // NO DEPENDENCIES, ON PURPOSE. The framework is self-contained: GRDB is
+    // compiled INTO `ProximiioBinary.xcframework` (≈4 990 exported GRDB
+    // symbols, ZERO undefined ones), and the SQLite it talks to is the
+    // system's `/usr/lib/libsqlite3.dylib`. So nothing here has to supply
+    // GRDB, and declaring it did active harm: SwiftPM links source targets
+    // statically, so every consumer — the customer's app AND
+    // proximiio-ios-map-v6, which depends on these products — compiled and
+    // absorbed a SECOND and THIRD copy of GRDB that no code could ever reach.
+    // The symptom a customer saw was 104 `objc[…]: Class _TtC4GRDB… is
+    // implemented in both` lines at launch (52 GRDB classes × two redundant
+    // registrations) plus ~600 KB of dead bytes per consuming binary.
+    //
+    // Nor is GRDB part of the published surface: the shipped
+    // `.swiftinterface` does not name it — it must not, or a consumer whose
+    // toolchain rebuilds that interface without explicit Clang modules fails
+    // with `missing required module 'GRDBSQLite'`, because SwiftPM cannot put
+    // GRDB's system-library module map on the search path the interface
+    // sub-invocation inherits. `import GRDB` is `package import` in the
+    // sources for exactly that reason.
+    //
+    // Do not re-add it. scripts/verify-binary-release.sh asserts BOTH halves
+    // on the shipped bytes — the binary must export GRDB and import none, and
+    // this manifest must declare none — and fails the release either way.
+    dependencies: [],
     targets: [
         .binaryTarget(
             name: "ProximiioBinary",
-            url: "https://github.com/proximiio/proximiio-sdk-ios-binary/releases/download/6.0.0-beta.33/ProximiioBinary.xcframework.zip",
+            url: "https://github.com/proximiio/proximiio-sdk-ios-binary/releases/download/6.0.0-beta.34/ProximiioBinary.xcframework.zip",
             checksum: "a81043c88df44b89866d7e336038e73d5fb8afabe243e2b2e95a114e386472f2"
         ),
         .target(
             name: "Proximiio",
-            dependencies: [
-                "ProximiioBinary",
-                .product(name: "GRDB", package: "GRDB.swift"),
-            ]
+            dependencies: ["ProximiioBinary"]
         ),
-        // Shim. Same one-line body and the same dependencies as `Proximiio`
-        // above — it re-exports the same flattened binary. The GRDB dependency
-        // is not optional here either: a binaryTarget cannot declare it, so
-        // every source target that re-exports the binary has to carry it or
-        // the consumer's link is short the storage symbols.
+        // Shim. Same one-line body as `Proximiio` above — it re-exports the
+        // same flattened binary, and like `Proximiio` it needs nothing but the
+        // binary target itself.
         .target(
             name: "ProximiioCore",
-            dependencies: [
-                "ProximiioBinary",
-                .product(name: "GRDB", package: "GRDB.swift"),
-            ]
+            dependencies: ["ProximiioBinary"]
         ),
     ]
 )

@@ -6,6 +6,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.34] — 2026-09-12
+
+### Removed
+
+- **The binary distribution no longer declares a GRDB dependency.** Neither the
+  SwiftPM `Package.swift` nor the CocoaPods podspec asks for `GRDB.swift` any
+  more.
+
+  GRDB is compiled *into* `ProximiioBinary.xcframework` — 4 990 exported GRDB
+  symbols per slice, **zero** undefined, with SQLite coming from
+  `/usr/lib/libsqlite3.dylib`. The framework has never needed an external copy,
+  and its public `.swiftinterface` never named a GRDB type. But SwiftPM and
+  CocoaPods link source dependencies *statically*, so declaring GRDB made every
+  consumer compile and absorb a second one that no code could reach — the
+  customer's app, and `proximiio-ios-map-v6` on the way through.
+
+  What a customer saw: 104 `objc[…]: Class _TtC4GRDB… is implemented in both …`
+  lines at launch — 52 GRDB classes, registered three times over — and
+  **601 873 bytes** of dead GRDB in the map framework alone (23 % of its
+  symbol-covered `ios-arm64` bytes; the same 601 991 bytes are the one copy the
+  SDK legitimately carries). Nothing misbehaved: there is exactly one SDK in the
+  process, the extra GRDB copies were never entered, and no state was
+  duplicated. It was noise and dead weight, and it is gone.
+
+  **What you have to do: nothing**, beyond re-resolving on the next tag.
+  CocoaPods integrators get a line *back*: the Podfile no longer needs
+  `pod 'GRDB.swift', :git => …, :tag => 'v7.11.1'` — the workaround for GRDB's
+  7.x line being absent from the CocoaPods CDN — and keeping it re-creates the
+  duplicate. Delete it.
+
+  **The one way this can break you:** if your own code writes `import GRDB` and
+  reached GRDB transitively through us, it no longer resolves. That was never a
+  documented or supported part of this SDK's surface — no public API exposes a
+  GRDB type and the shipped interface never re-exported it — so declare GRDB
+  yourself:
+
+  ```swift
+  .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.11.1"),
+  ```
+
+  `manifest.json` still records `grdbVersion` as build provenance (which GRDB is
+  inside these bytes — the MIT notice obligation is unchanged, since the
+  framework still redistributes GRDB). It is no longer rendered into any
+  manifest.
+
+  `verify-binary-release.sh` replaces the old "advertised GRDB minimum is not
+  below the compiled-against version" check — which, with nothing left to grep
+  for, had silently degraded from a hard failure to a warning — with the
+  inverse invariant asserted on the shipped bytes, in both directions and both
+  fatal: every slice must **export** GRDB symbols and **import** none, and the
+  manifest a customer resolves must **declare** none. Three negative controls
+  prove the gate can fail: a binary with no GRDB in it, a binary that leaves a
+  GRDB symbol undefined, and a manifest that declares GRDB as a package
+  dependency and as a target product.
+
 ## [6.0.0-beta.33] — 2026-09-12
 
 ### Fixed

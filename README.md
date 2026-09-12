@@ -56,22 +56,17 @@ end
 
 Replace `<tag>` with the release you want (e.g. `6.0.0-rc.1`). Then
 `pod install`. The podspec downloads the `ProximiioBinary.xcframework` Release
-asset (SHA-256 verified via `:sha256`), links **GRDB.swift ~> 7** from source,
-and exposes the SDK under `import Proximiio` — identical to the SPM package.
+asset (SHA-256 verified via `:sha256`) and exposes the SDK under
+`import Proximiio` — identical to the SPM package. It declares **no**
+dependency: GRDB is compiled into the xcframework and SQLite comes from the
+system.
 
-> **Required: GRDB 7 source override.** The SDK binary is built against GRDB 7,
-> but GRDB has **not** published its 7.x line to the CocoaPods trunk CDN (trunk
-> stops at 6.24.1). GRDB does ship a valid `.podspec` in its repo at every 7.x
-> tag, so add this one line to your `Podfile` to make GRDB 7 resolvable — it is
-> what satisfies `pod 'Proximiio'`’s `GRDB.swift ~> 7` dependency:
->
-> ```ruby
-> pod 'GRDB.swift', :git => 'https://github.com/groue/GRDB.swift.git', :tag => 'v7.11.1'
-> ```
->
-> Pick any `v7.x` tag `>= 7.0`. When GRDB resumes publishing 7.x to trunk this
-> line becomes unnecessary. (SwiftPM consumers are unaffected — SPM resolves
-> GRDB 7 directly from the git repo.)
+> **Upgrading from `6.0.0-beta.33` or earlier: delete your GRDB line.** The
+> podspec used to declare `GRDB.swift`, which CocoaPods trunk could not resolve
+> (trunk stops at 6.24.1), so every Podfile needed
+> `pod 'GRDB.swift', :git => …, :tag => 'v7.11.1'` alongside it. That line is
+> now unnecessary, and keeping it links a second, unreachable copy of GRDB into
+> your app — ~600 KB and 52 duplicate ObjC class registrations at launch.
 
 ### React Native
 
@@ -82,7 +77,6 @@ dependencies:
 ```ruby
 # ios/Podfile — inside your app target
 pod 'Proximiio', :podspec => 'https://raw.githubusercontent.com/proximiio/proximiio-sdk-ios-binary/<tag>/Proximiio.podspec'
-pod 'GRDB.swift', :git => 'https://github.com/groue/GRDB.swift.git', :tag => 'v7.11.1'  # see GRDB 7 note above
 ```
 
 ```jsonc
