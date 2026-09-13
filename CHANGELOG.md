@@ -6,6 +6,175 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.35] — 2026-09-13
+
+### Fixed
+
+- **The bearer token was being written to disk by `URLCache`, and every release
+  before this one is affected.** Finding M14 moved the credential out of URLs
+  and into an `Authorization` header, which was right — but `URLCache` persists
+  request headers alongside responses, so the token moved from one on-disk
+  artefact to another. It was found by pulling a container off a physical
+  device and scanning the bytes: 34 `Authorization: Bearer` headers in
+  `Library/Caches/<bundle>/Cache.db-wal`. Cached bodies included venue data.
+
+  The SDK's own sessions were `.ephemeral` and therefore safe — but only by
+  accident, because that configuration's built-in cache happens to have zero
+  disk capacity. The live hole was the public `init(session:)` seams on the
+  relay and Blueiot transports: hand them `URLSession.shared`, which is the
+  natural thing to pass, and the credential lands on disk.
+
+  A session that would write to disk is now rebuilt without its cache; its
+  timeouts, headers, proxy settings and protocol classes survive. One-time
+  cleanup clears what earlier versions already wrote, gated on a marker so it
+  runs once rather than on every launch.
+
+  Worth knowing if you are hardening your own networking: neither
+  `.reloadIgnoringLocalCacheData` nor `willCacheResponse` returning `nil`
+  prevents the write — the first governs reads, the second is not honoured on
+  every request method. Clearing the cache is the only control that holds. And
+  there is no way to keep the response body while dropping the credential:
+  `URLCache` keys one entry by its request and stores both halves together.
+
+  **Cost:** no HTTP response caching on API traffic. Sync is watermark-based,
+  so the practical loss is 304 revalidation on repeated identical GETs.
+
+### Added
+
+- **A support report is now one call, and the SDK writes it.** Recording a
+  session and preparing the bundle replaces the checklist an integrator used to
+  work through by hand — capture `diagnostics().summary` while the problem is
+  live, install a log sink, print the venue-configuration checks, remember the
+  SDK and iOS versions — and produces a single `.zip` to attach to a ticket.
+
+  ```swift
+  // Once, at launch. Before start(), so "the SDK never started" is recordable.
+  try await proximiio.startDiagnosticsRecording()
+
+  // … reproduce the problem …
+
+  let report = try await proximiio.prepareDiagnosticsReport()
+  share(report.archiveURL)      // proximiio-report-20260913-101422.zip
+  ```
+
+  Inside `proximiio-report-<yyyyMMdd-HHmmss>.zip`: a generated `README.txt`
+  written in plain English for whoever opens it — what this is, the session
+  (app, SDK, device, when it started, how many positions), a **Verdict** line,
+  what to do about it, and what each other file holds; `proximiio-diagnostics.log`
+  in the established `<ISO8601 fractional><SP><SP><KIND><TAB><message>` format,
+  with the rotated `proximiio-diagnostics-previous.log` beside it when one
+  exists; a pretty-printed, sorted-key `proximiio-session-manifest.json`
+  carrying `schemaVersion`, `sdk`, `app`, `device`, `session`, `diagnostics`,
+  `configuration`, `inputs` and any host-attached `extensions`; and
+  `proximiio-inputs-layout.json` when the venue has positioned inputs.
+
+  The log gains a `DIAG` kind written on every diagnostics transition —
+  `noPositionReason` changing, a provider's connection flipping, the last fix
+  crossing a staleness band — plus a heartbeat forced every 60 s even when
+  nothing changed. That heartbeat is the point: two consecutive lines with the
+  same fix count and a growing age say the stream went quiet, while a climbing
+  fix count and an age under a second say positions are arriving and a dot that
+  will not move is a geometry problem. A frozen position and a dead stream look
+  identical in the app and want completely different fixes.
+
+  **The bundle carries no credentials, and that is enforced rather than
+  asserted.** Three layers: the manifest records `tokenConfigured: Bool` and
+  never a token, every log line and manifest string is scrubbed at write, and
+  the finished bytes are audited — if anything credential-shaped survived,
+  `prepareDiagnosticsReport()` throws
+  `ProximiioDiagnosticsReportError.redactionAudit(_:)` and **produces no file at
+  all**, so there is nothing left on disk to share by accident. Each finding
+  names the file, the line and the rule. This belongs in the SDK because the SDK
+  is the component that *holds* the application token and can scrub it without
+  being told; an app-level redactor must be told its secrets and will be told
+  them incompletely. Pass any others your app configured through
+  `ProximiioDiagnosticsRecordingOptions.additionalSecrets`.
+
+  Coordinates, beacon short keys, anchor names, tag ids, hostnames and geofence
+  names are deliberately **not** redacted. They are the content, they are
+  already visible to anyone holding the venue configuration, and an export
+  nobody can read is a screenshot with extra steps.
+
+  **What you have to do: nothing.** Recording is opt-in and off until you call
+  `startDiagnosticsRecording(_:)`, which is deliberate — it writes a file in your
+  container and subscribes to streams, and an SDK should not do either uninvited.
+  Calling it twice is a no-op rather than an error, so a launch call and a
+  settings toggle need not coordinate, and `prepareDiagnosticsReport()` works
+  whether or not a recording is running: with no recorder it reopens the same
+  on-disk log, so an export after a crash and relaunch still carries the session
+  that crashed. An empty log is itself a finding — the SDK never started, the
+  token was never accepted, permission was denied — so the export never refuses
+  the cases that most need one.
+
+  Your own lines go in the same timeline via
+  `recordDiagnosticsEvent(_:_:at:)`, and the things only the host knows via
+  `attachDiagnosticsReportSection(_:_:)`. Knobs on
+  `ProximiioDiagnosticsRecordingOptions`: `directory`, `diagnosticsInterval`
+  (1 s), `heartbeatInterval` (60 s), `rotationThresholdBytes` (2 MB),
+  `maximumBundleBytes` (10 MB), `recordsBeacons` (`true`), `capturesSDKLog`
+  (`false`) and `additionalSecrets`.
+
+  Nothing about the bundle is a private format. Unzip it and point the tools
+  that already existed at the files inside:
+
+  ```
+  python3 tools/accuracy/evaluate.py run1/proximiio-diagnostics.log \
+      --layout run1/proximiio-inputs-layout.json --out report1
+
+  python3 scripts/anonymize-diagnostics-log.py run1/proximiio-diagnostics.log fixture.log \
+      --layout run1/proximiio-inputs-layout.json fixture-layout.json
+  ```
+
+  **Known limitation:** diagnostics are polled at 1 Hz rather than streamed, so
+  a transition that opens and closes inside one interval is missed — a provider
+  that drops and reconnects within the same second leaves no `DIAG` line. The
+  forced heartbeat bounds how long any state can go unrecorded; it does not make
+  the record continuous. A real change stream is follow-up work.
+
+- **`ProximiioPackage.version` — the SDK can now say which release it is.** It
+  could not before, which meant a support bundle, a crash report or an integrity
+  dump could describe a misbehaving SDK without identifying it, and four betas
+  can ship in a week. "The current version" is not a usable answer to "which
+  build produced this".
+
+  ```swift
+  ProximiioPackage.version      // "6.0.0-beta.34" — the most recent released tag
+  ProximiioPackage.generation   // "6" — what other packages pin against
+  ```
+
+  Both are plain constants. Nothing is derived at build time: a build revision
+  or a build date would look authoritative in a report while being unverifiable
+  against anything. `scripts/release.sh` is the only thing that moves `version`,
+  rewriting it in the same commit that stamps this file, and a test fails the
+  moment the constant and the newest stamped heading disagree. A build made
+  between two releases reports the release it descends from — an unpublished
+  build has no other honest answer. The report export stamps it into every
+  manifest.
+
+### Changed
+
+- **`ProximiioDiagnostics.ConfigurationSummary` is now `Encodable`, so you can
+  stop hand-mirroring it.** Serialising a diagnostics snapshot into your own
+  telemetry or support payload meant writing out roughly forty knobs by hand,
+  and a knob added here silently went missing from your report until someone
+  noticed. `NoPositionReason`, `VisitorReportingState` and
+  `CustomPositionProviderConnection` gained the same conformance, which is what
+  makes the summary encodable as a whole.
+
+  ```swift
+  let json = try JSONEncoder().encode(await proximiio.diagnostics().configuration)
+  ```
+
+  **What you have to do: nothing** — this is additive, and the mirroring code
+  you already have keeps working. Delete it when convenient.
+
+  **`Encodable`, not `Codable`, on purpose.** These are snapshots of live SDK
+  state, produced by the SDK and read by a human or a tool. Decoding one would
+  imply a value you can construct and hand back, which is not a thing the SDK
+  accepts, and it would freeze every field name into a format we have to keep
+  decoding after the diagnostics themselves move on. Write-only keeps the
+  summary free to grow.
+
 ## [6.0.0-beta.34] — 2026-09-12
 
 ### Removed
