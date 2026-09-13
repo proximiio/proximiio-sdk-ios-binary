@@ -6,6 +6,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.36] — 2026-09-13
+
+### Changed
+
+- **The diagnostics recording no longer needs a `Proximiio` instance.** The three
+  cases support sees most — "the SDK never started", "authentication failed",
+  "I passed the wrong token" — are the ones where there is either no instance at
+  all (`init(configuration:)` throws) or one that never got past
+  `authenticate()`. An export reachable only through a successfully-constructed
+  facade could not describe any of them, which made the single most valuable
+  report the one it could not produce.
+
+  `startDiagnosticsRecording(_:)`, `stopDiagnosticsRecording()`,
+  `isRecordingDiagnostics`, `recordDiagnosticsEvent(_:_:at:)`,
+  `attachDiagnosticsReportSection(_:_:)`, `addDiagnosticsSecret(_:)` and
+  `prepareDiagnosticsReport()` now exist on `Proximiio` **the type** as well as
+  on an instance. Start the recording on the first line of
+  `didFinishLaunchingWithOptions`; the first instance to call `authenticate()`
+  or `start()` is adopted into it automatically, and its streams join the same
+  file below what is already there — nothing to hold, nothing to hand over.
+
+  There is one recording per process, stated plainly, because there is one
+  `proximiio-diagnostics.log` per container. That was already true (two facades
+  recording at once already interleaved into one file); this makes it explicit
+  and lock-safe. The alternatives were considered and rejected: a recorder
+  object the host creates adds a step and a stored property to a five-step
+  drop-in and does not actually remove the global, and recording implicitly
+  writes a file into a customer's container uninvited.
+
+  A report taken with no instance omits the manifest's `diagnostics`,
+  `configuration` and `inputs` sections rather than zero-filling them — an
+  absent section is a finding, a fabricated one is a wrong answer — and the
+  README's verdict says the SDK was never running.
+
+- **`recordDiagnosticsEvent(_:_:at:)` is no longer `async`.** It was `async` into
+  an actor, so a host with a synchronous logger — every host — either chained the
+  calls itself or watched consecutive lines land in the file in whatever order
+  the runtime resumed them. Events are now queued synchronously under a lock, so
+  file order is call order from any thread, and the recorder drains that queue
+  before a flush, a stop and an export. Ordering is the SDK's problem, which is
+  where it belongs. Existing `await` call sites keep compiling (with a
+  "no 'async' operations occur" warning).
+
+- **`ProximiioDiagnosticsEventKind` is a `RawRepresentable` struct rather than an
+  enum, and hosts can name their own column.** Three kinds is not a taxonomy: an
+  app with ten had to smuggle its own into the message text as a `[MAP]` prefix,
+  which puts it in the one column nothing indexes. `.custom(_:)` writes `MAP`,
+  `ROUTE`, `NAV` into the kind column instead.
+
+  The column stays a contract: `[A-Z]`, at most `maximumLength` (12) characters —
+  the intersection of what `DiagnosticsLogDecoder` can tokenise and what
+  `tools/accuracy/evaluate.py`'s `[A-Z]+\b` can count. Both readers drop a column
+  they cannot parse *silently*, so `.custom(_:)` normalises rather than refuses
+  (`"route-2"` → `ROUTE`) and falls back to `.info` for a name that survives
+  nothing or that claims a kind the SDK writes itself — a hand-written `FIX`
+  would inject a phantom position into a replay. `init?(rawValue:)` refuses
+  anything the format cannot carry. The static members (`.fix`, `.state`, …),
+  `rawValue`, `init?(rawValue:)` and `Codable` are unchanged; an exhaustive
+  `switch` over the kind no longer compiles, which is the only realistic break
+  and only for code written against `6.0.0-beta.35`.
+
+### Added
+
+- **`addDiagnosticsSecret(_:)`, which scrubs backwards as well as forwards.**
+  `ProximiioDiagnosticsRecordingOptions.additionalSecrets` freezes when recording
+  starts, which is fine for a value compiled in and useless for the ones that
+  matter: a relay bearer and an engine password are typed into a settings screen
+  an hour into a session. Redaction that depends on the host getting the ordering
+  right is redaction that will fail.
+
+  Registering a secret mid-session now removes it from the material **already
+  written** — the current log, the retained previous generation, the unflushed
+  buffer and the manifest sections already attached — not only from future
+  writes. The line most likely to contain the value is the one the host wrote the
+  instant the user typed it, and that line is on disk before anyone can call
+  this. Adoption of an instance registers its application token the same way, so
+  a token logged before the SDK existed is scrubbed retroactively too.
+
+  It returns `false`, and writes a line saying so (never the value), when the
+  value is under eight characters — below which scrubbing destroys the log rather
+  than the credential — or is already known.
+
+- Host-owned manifest sections are now redacted on the way in, keys included,
+  rather than only caught by the L3 audit refusing the whole export.
+
 ## [6.0.0-beta.35] — 2026-09-13
 
 ### Fixed
