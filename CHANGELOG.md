@@ -6,6 +6,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.38] — 2026-09-15
+
+### Added
+
+- **Amenities are a stored entity, and one POI's title is a local lookup.** A
+  client app that titles its detour offers from the amenity ids its POIs carry
+  called `amenities()` for them — a paged, org-wide download with nothing behind
+  it, made after a visit had already started, failing soft into untitled
+  buttons. Naming three offers cost a second full catalogue download, every
+  time, and nothing of it survived the screen.
+
+  The catalogue is now stored in the `SyncStore` under the same entity name
+  every other resource uses (`ProximiioResourceType.amenity`), the whole
+  organization's catalogue rather than the subset one venue references.
+  `amenities()` keeps its signature and reads the store, downloading only when
+  the store has none — so the catalogue costs one download per install instead
+  of one per screen, and it answers on the next launch with the network gone.
+  New `amenity(id:)` is the lookup a caller actually wants: one amenity id in,
+  its title, icon and category out, read locally without enumerating anything,
+  and `nil` for an id that is not stored rather than an invented title. New
+  `cachedAmenities()` reads the store and never touches the network;
+  new `refreshAmenities()` is the download on its own, replacing the stored copy
+  in one transaction so a failed refresh keeps the previous catalogue.
+
+  Freshness works exactly as it does for features: the audit change feed carries
+  core resources, and amenities — like features — are a geo resource, so the
+  stored copy is refreshed by an explicit `refreshAmenities()` (the amenity
+  counterpart of `loadRouteNetwork()`), not by a sync tick. Refresh it where you
+  refresh the venue's features. If the feed ever carries the `Amenity` entity,
+  nothing has to change: audit rows are stored under the wire entity name, which
+  is the row these accessors already read.
+
+  An app that titled POIs replaces its catalogue fetch and dictionary with
+  `_ = try? await sdk.amenities()` once at startup and
+  `await sdk.amenity(id: id)?.title` at the point of use. Nothing was added to
+  the first-launch sync: the endpoint, its paging and the bytes on the wire are
+  unchanged, the download that already happened is simply kept. A `/core/package`
+  snapshot that carries an `amenities` group now seeds the same rows.
+
 ## [6.0.0-beta.37] — 2026-09-14
 
 ### Added
