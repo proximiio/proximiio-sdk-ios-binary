@@ -6,6 +6,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.37] — 2026-09-14
+
+### Added
+
+- **The SDK derives the Blueiot relay's floor mapping from its own floors.** The
+  rule is one sentence — *a LocalSense engine's floor number is the Proximi.io
+  floor level* — and the SDK already syncs every floor with its `level`, so
+  there was never a reason for a host app to hand-build a `[String: String]`.
+  Both apps that consume the relay did, one of them carrying a venue id in an
+  xcconfig to do it, and they got it wrong in opposite directions.
+
+  New `BlueiotEngineFloorNumbering` derives engine number → floor id;
+  `BlueiotCloudRelayClient.setVenueFloors(_:)` takes the floors and
+  `BlueiotCloudRelayPositionProvider` is handed them by the facade. Nothing to
+  pass, nothing to keep in sync. `BlueiotCloudRelayClient.Diagnostics` gained
+  `derivedFloorIDsByEngineNumber` so a diagnostics screen can show the table.
+
+  Additive: `BlueiotCloudRelayConfiguration.floorNoMap` still works and still
+  wins — **whole**, not merged into the derived table — so an app that shipped
+  its own mapping keeps exactly the behaviour it had until it deletes it.
+
+- **`CustomPositionProviding.venueFloorsDidChange(_:)`.** The facade hands every
+  attached provider the venue's floors, on attach and on every floor sync, so a
+  provider that has to turn another system's storey identity into a Proximi
+  floor id can derive that from the SDK's data instead of the host's. The
+  protocol's default implementation ignores them, so no existing provider
+  changes.
+
+- **`BlueiotCloudRelayConfiguration.engineGroundFloorNumber`** (default `0`,
+  i.e. the rule). One integer, for one compatibility case: LocalSense venues are
+  commonly numbered from 1, so on such a deployment the engine's floor 1 is the
+  organisation's level 0. Verified against the live relay on 2026-09-11 — with
+  the knob at `1` every one of 402 fixes read L0; at `0` they read L1, a level
+  that organisation has no geometry for at all. It is a property rather than an
+  `init` parameter on purpose: it is an escape hatch for a not-yet-renumbered
+  deployment, not a general-purpose mapping feature, and a venue that needs it
+  should have to write the line.
+
+### Changed
+
+- **An engine floor number that maps to no floor is no longer silent.** It used
+  to vanish into `defaultFloorID` without a word — which is exactly how a venue
+  spent a day with the blue dot on a blank basemap and nothing saying why. The
+  first fix carrying each distinct unmapped number now logs a `warning` under
+  the `Blueiot` category naming the number, the numbers the venue actually has,
+  the current `engineGroundFloorNumber` and the line that fixes it; the numbers
+  accumulate in `BlueiotCloudRelayClient.Diagnostics.unmappedEngineFloors`.
+  Once per distinct number, not once per fix — a tag sits on one storey for
+  minutes. It goes through the SDK's log sink, so it reaches a diagnostics
+  export a customer sends to support.
+
+- **A relay-fed sample's default accuracy is 1 m** (was 2), as
+  `BlueiotCloudRelayConfiguration.defaultAccuracy`, and a developer still sets
+  `accuracy` to whatever a venue measures. The number is not only the radius of
+  the ring: the geofence engine decides every relay-fed enter/exit with it, so
+  a venue-positioned app's zone transitions were being judged by a constant
+  nobody had chosen deliberately. The relay's own `confidence` and
+  `positioningIndicator` stay unmapped — see
+  `BlueiotCloudRelayMessage.Relative`; collect them at a venue first.
+
 ## [6.0.0-beta.36] — 2026-09-13
 
 ### Changed
