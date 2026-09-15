@@ -6,6 +6,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.39] — 2026-09-15
+
+### Added
+
+- **The export now says why a backgrounded app stopped.** A relay-only host ran
+  `relayOnly(token:runsInBackground: true)`, declared the `location` background
+  mode and attached the cloud-relay provider. The SDK started its keep-alive
+  CoreLocation session exactly as designed, and the process was suspended 30 s
+  after backgrounding: last fix 02:02:18.5Z, then eight minutes of silence, with
+  no `stale` line because nothing was left running to write one. The cause was a
+  single fact the SDK had held from the first second — location authorization
+  was `notDetermined`, the host had never asked, so `startUpdatingLocation`
+  delivered nothing and iOS revoked the continuous-execution grant at the grace
+  period. The exported log contained zero authorization lines, so the
+  investigation went to the relay.
+
+  The keep-alive source now writes that fact down. When it starts, and on every
+  authorization change afterwards, the SDK logs
+  `location authorization is whenInUse (full accuracy)` through
+  ``Proximiio/logSink``; and every diagnostics recording — no option to turn on
+  — carries a `DIAG` line stating all three preconditions and its verdict:
+
+      DIAG	Background — updates: on, location mode: declared, location authorization is notDetermined (full accuracy) — WILL BE SUSPENDED shortly after backgrounding
+
+  written once per session and again whenever it changes, so an export shows the
+  exact moment a user granted or revoked access. The same line is now in
+  `ProximiioDiagnostics.summary`, directly under `Config —`.
+
+  When background location updates are on and the state cannot hold the grant,
+  the SDK also logs a **warning** that names the consequence and the remedy
+  rather than a status token: that iOS suspends the process shortly after it
+  backgrounds and every attached position provider stops with it, and that the
+  host must request when-in-use authorization. A missing `location` entry in
+  `UIBackgroundModes` warns separately, for the same reason the SDK already
+  refuses to set `allowsBackgroundLocationUpdates` without it.
+
+  The SDK still does **not** prompt on the host's behalf — which prompt the user
+  sees, and when, stays the host's decision; `requestPermissions(always:)` is
+  there for hosts that want the SDK to drive it.
+
+  One thing discovered while writing this and worth knowing: the diagnostics
+  redactor's credential rule rewrites `authorization:` followed by 12+
+  credential-alphabet characters into `REDACTED`, which turned
+  `location authorization: notDetermined` into `location authorization: REDACTED`
+  in the log file. The line is therefore phrased `authorization is …`, and a
+  test reads the bytes back out of the export to keep it that way.
+
+
 ## [6.0.0-beta.38] — 2026-09-15
 
 ### Added
