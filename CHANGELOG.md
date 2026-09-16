@@ -6,6 +6,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.40] — 2026-09-16
+
+### Changed
+
+- **`BlueiotCloudRelayConfiguration.engineGroundFloorNumber` shifts storeys
+  above ground only.** Blueiot confirmed that a LocalSense engine cannot number
+  a floor 0: storeys count from 1, basements are negative, and that is the
+  engine's convention, not a venue waiting to be renumbered. Proximi.io keeps
+  ground = level 0, so the option is how a venue states which convention its
+  engine uses — `1` for a LocalSense engine, `0` for one that numbers like
+  Proximi.io. At `1`, engine floors 1, 2, 4 are levels 0, 1, 3 as before;
+  engine floors −1 and −2 are now levels −1 and −2 (beta.37 shifted those too,
+  to −2 and −3); engine floor 0 maps to nothing and is reported, as before.
+  `BlueiotEngineFloorNumbering.engineNumber(forLevel:)` agrees: a level at or
+  above 0 shifts by the option, a level below 0 passes through. Still one
+  integer, still no host-side map. Additive: no public signature changed.
+
 ## [6.0.0-beta.39] — 2026-09-15
 
 ### Added
@@ -122,14 +139,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   changes.
 
 - **`BlueiotCloudRelayConfiguration.engineGroundFloorNumber`** (default `0`,
-  i.e. the rule). One integer, for one compatibility case: LocalSense venues are
-  commonly numbered from 1, so on such a deployment the engine's floor 1 is the
-  organisation's level 0. Verified against the live relay on 2026-09-11 — with
-  the knob at `1` every one of 402 fixes read L0; at `0` they read L1, a level
-  that organisation has no geometry for at all. It is a property rather than an
-  `init` parameter on purpose: it is an escape hatch for a not-yet-renumbered
-  deployment, not a general-purpose mapping feature, and a venue that needs it
-  should have to write the line.
+  i.e. the rule). One integer stating which convention the engine numbers
+  storeys in: a LocalSense engine numbers from 1 with no 0, so on such a
+  deployment the engine's floor 1 is the organisation's level 0 and the option
+  is `1`. Verified against the live relay on 2026-09-11 — with the knob at `1`
+  every one of 402 fixes read L0; at `0` they read L1, a level that
+  organisation has no geometry for at all. It is a property rather than an
+  `init` parameter on purpose: it states a fact about the venue's engine, not
+  the shape of a relay configuration, and a venue that needs it should have to
+  write the line. (In this release the shift applied to every level, basements
+  included; see [Unreleased] for the correction that limits it to storeys above
+  ground.)
 
 ### Changed
 
