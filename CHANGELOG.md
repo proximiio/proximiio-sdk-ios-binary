@@ -6,6 +6,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.41] — 2026-09-17
+
+### Fixed
+
+- **A relay fix in a multi-building organisation names the venue's own floor.**
+  The derived engine-number table was organisation-wide: floors sorted by id,
+  first at a level wins. An organisation measured on 2026-09-17 holds 12 floors
+  in 9 places, 8 with a level 0, so at `engineGroundFloorNumber = 1` every
+  engine-1 fix at the Department of Culture and Tourism in Abu Dhabi resolved
+  to the ground floor of a building in Piešťany. The map floor, geofences and
+  route snapping read only the level and were right; every consumer of the
+  floor id was wrong — `floorChanges()`, `currentFloor`, the diagnostics floor
+  name, visitor analytics and LiveView. `BlueiotCloudRelayClient` now resolves
+  each fix by its coordinate: among the floors at that level, a floor whose
+  plan (the outline of its `anchors`) contains the fix wins, otherwise the
+  floor whose place `location` is nearest (or, for a place with no location,
+  the centre of the floor's anchors). A floor with neither is chosen only when
+  no candidate has either, lowest id first. A level present in one building,
+  engine floor 0, basements and a host-supplied `floorNoMap` behave as in
+  beta.40. The choice writes nothing to the log.
+
+### Added
+
+- `BlueiotEngineFloorNumbering.floorID(forEngineNumber:near:)`,
+  `setPlaces(_:)` and `init(floors:places:engineGroundFloorNumber:)`: the
+  per-fix floor choice above. `floorIDsByEngineNumber` is unchanged and
+  documented as organisation-wide.
+- `BlueiotCloudRelayClient.setVenuePlaces(_:)`, and
+  `BlueiotCloudRelayPositionProvider.venuePlacesDidChange(_:)` forwarding to it.
+- `CustomPositionProviding.venuePlacesDidChange(_:)`, with a default no-op. The
+  facade hands an attached provider the synced places on attach and on every
+  place sync, as it already does with floors.
+
 ## [6.0.0-beta.40] — 2026-09-16
 
 ### Changed
