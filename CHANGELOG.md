@@ -6,6 +6,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.42] — 2026-09-21
+
+### Fixed
+
+- **`diagnostics().noPositionReason` no longer blames the radios on a
+  relay-fed app.** `noViablePositioningInputs` is a permission test — Location
+  and Bluetooth both denied or restricted — and it was evaluated before any
+  position source was consulted. An app on
+  `ProximiioConfiguration.relayOnly(token:)` enables no native source at all
+  (no iBeacon, no Eddystone, no phone-native UWB, no native location) and
+  routinely runs with both authorizations denied because it never raises either
+  prompt, so it reported `noViablePositioningInputs` while an attached provider
+  was feeding correct positions and the blue dot was right. Support read the
+  reason as the cause and went to Settings. Two ordering changes: an attached
+  provider the SDK is *consuming* now suppresses the permission verdict when it
+  has produced a fix inside `positioning.customPositionDuration` or reports
+  `connection == .online`, and `positioningSourceOffline` is now evaluated
+  before the permission test rather than after it. A relay-only app with both
+  authorizations denied therefore reports `nil` while the relay is delivering,
+  `awaitingFirstFix` while the relay is online but has sent nothing yet,
+  `positioningSourceOffline` once the relay goes dark and the last fix ages
+  out, and `noViablePositioningInputs` only when nothing is attached (or the
+  attached provider is neither delivering nor reachable). A provider reporting
+  `connection == .unknown` still neither raises `positioningSourceOffline` nor
+  suppresses `noViablePositioningInputs`, and a provider the SDK has paused for
+  the background is not weighed at all. Native-source apps, which attach no
+  provider, classify exactly as before. No enum case was added or removed and
+  no signature changed; the `noViablePositioningInputs` and `awaitingFirstFix`
+  `explanation` strings were reworded to match. The permission snapshot is
+  unchanged on `diagnostics().permissions` and in the `Permissions —` line of
+  `summary`.
+
 ## [6.0.0-beta.41] — 2026-09-17
 
 ### Fixed

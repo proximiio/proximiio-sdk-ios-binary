@@ -34,7 +34,7 @@
 
 Pod::Spec.new do |s|
   s.name             = 'Proximiio'
-  s.version          = '6.0.0-beta.41'
+  s.version          = '6.0.0-beta.42'
   s.summary          = 'Proximi.io iOS SDK — indoor positioning, PDR, geofencing, and wayfinding.'
   s.description      = <<-DESC
     Precompiled binary distribution of the Proximi.io iOS SDK: indoor positioning,
@@ -68,7 +68,7 @@ Pod::Spec.new do |s|
   # unzips the archive into the pod root; it contains `ProximiioBinary.xcframework`
   # at its top level. `:sha256` is the SHA-256 of the zip — the SAME value SwiftPM
   # pins via `swift package compute-checksum`, so both toolchains verify one digest.
-  s.source           = { :http => 'https://github.com/proximiio/proximiio-sdk-ios-binary/releases/download/6.0.0-beta.41/ProximiioBinary.xcframework.zip', :sha256 => '64a5f99e693afd27aacf6aa05f8ef6c145fb111155c1456d29dfa873a4e19446' }
+  s.source           = { :http => 'https://github.com/proximiio/proximiio-sdk-ios-binary/releases/download/6.0.0-beta.42/ProximiioBinary.xcframework.zip', :sha256 => 'afc59fa1328ab7a68df71bd489570412b7ff79a707655bd49eaa6f7879c7dfbc' }
 
   s.vendored_frameworks = 'ProximiioBinary.xcframework'
 
