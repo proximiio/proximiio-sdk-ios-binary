@@ -6,6 +6,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.44] — 2026-09-25
+
+### Added
+
+- **DL-TDoA fw 0.6.x in `ProximiioDevices` (`protocol.md §13.4`, §13.10).**
+  Provisioning field `0x1C` (`PRXDLProvisioningField.wgs84`): the anchor's
+  WGS-84 position as `PRXDLWGS84Position` (lat/lng `i32` × 1e7, altitude `i16`
+  cm, built in `Double`), `PRXDLProvisioning.wgs84(_:)` / `.clearWGS84` /
+  `.location(_:)`; a live field like `0x09`. `PRXDLSchedule.location` decodes
+  the 34-byte `0x010C` (`nil` on the 23-byte form), `PRXDLConfig.location`
+  seeds from it, and `PRXDLConfigDraft.syncWGS84(frame:supported:)` writes
+  `0x1C` with every `0x09` through the cell frame
+  (`PRXDLCellFrame.wgs84(of:)`), clearing a stale position when there is no
+  frame. `provisionDL` verifies it against `0x010C`. New gate `.dlWGS84`
+  (fw 0.6.0 or a 34-byte `0x010C`), `PRXDeviceSession.dlFirmware060`.
+- `PRXDLWGS84Position.altitudeRangeCm` (±25 599 cm, fw 0.6.10+, qorvo
+  `b120ee91`): the on-air altitude is 30-bit Q21 metres (±256 m), and fw
+  0.6.10 refuses a wider `0x1C` altitude with ATT `0x13`. `isValid`,
+  `PRXDLProvisioning.wgs84(_:)` and `init(latitude:longitude:altitudeMeters:)`
+  refuse anything outside it (never clamp), on every firmware version; the
+  simulator refuses it from fw 0.6.10.
+- `PRXDLHealth` battery curve: `batteryCurve`, `alkalinePercent(millivolts:)`,
+  `calibratedBatteryPercent` / `isBatteryLow` and the `.batteryLow` finding
+  (< 20 %), all on fw ≥ 0.6.0 only.
+- Simulator: `0x1C` with its refusals, the 34-byte `0x010C`, a 153-byte
+  `0x010B`, the battery rule per version, `setWGS84(_:)`,
+  `setBatteryMillivolts(_:)`, `antennaDelayWriteCount`; default firmware
+  0.6.7; the bench cell is I1 → [5, 3, 2] with R5/R3/R2 in slots 2/3/4 and R5
+  carrying the TEST WGS-84 value (`dlBenchTestWGS84`).
+- `PRXDLCellIssue.negativeY(anchorIDs:)` (`protocol.md` §13.13, fw 0.5.7+):
+  `PRXDLCell.validate()` names every anchor whose Y is below 0, ids sorted —
+  "anchors <ids> have a negative Y — move the cell origin so every Y is 0 or
+  above; Android phones read a negative Y wrong". A hint, not blocking, like
+  `sharedLEDColor`; the cell stays valid.
+
+### Changed
+
+- **`authenticate()` trims the token.** Surrounding whitespace and newlines are
+  removed before the token is stored and sent, so a token copied from a config
+  file with a trailing newline no longer fails with
+  `ProximiioError.invalidToken`. Quotes are kept: a quoted token is still
+  rejected. The `invalidToken` `recoverySuggestion` now reads, as on Android:
+  "Check that ProximiioConfiguration.token is the application token of your app
+  in Proximi.io Portal (Applications), with no surrounding quotes, that it has
+  not been revoked, and that apiBaseURL points at the deployment the token
+  belongs to. Re-run authenticate() after correcting it." Diagnostics
+  redaction covers both the configured and the trimmed token.
+
+### Fixed
+
+- **LiveView: a live `400` or `403` is no longer retried forever.** The shared
+  `APIClient` reports both as `.server(statusCode:)`, which
+  `LiveViewAPITransport` treated as transient, so the uploader retried the same
+  batch with backoff indefinitely. The transport now classifies them by the
+  ingest contract: a `400` drops that batch, logs once (status only, never the
+  body) and uploading continues; a `403` stops uploading with
+  `LiveViewUploaderState.unauthorized` until the host reconfigures. `5xx`,
+  timeouts and connectivity failures stay retryable. `APIClient`'s mapping is
+  unchanged for every other caller.
+
 ## [6.0.0-beta.43] — 2026-09-23
 
 ### Added
