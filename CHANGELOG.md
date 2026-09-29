@@ -6,6 +6,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.45] — 2026-09-29
+
+### Added
+
+- `ProximiioJourneyError` conforms to `ProximiioFailure`, so one
+  `catch let failure as any ProximiioFailure` now covers
+  `fetchJourney(id:)` too. Domain `io.proximi.sdk.journey`; `.invalidID` is
+  code 1, category `.configuration`; `.unplayable` is code 2, category
+  `.data`; neither is retryable. Both cases gain a `failureReason` and a
+  `recoverySuggestion`; `errorDescription` is unchanged. Additive API change.
+- `Proximiio.positioningStatusChanges() -> AsyncStream<PositioningStatus>`:
+  the no-position reason plus every attached provider's state and link
+  (`PositioningStatus.noPositionReason`, `.providers: [String:
+  PositionProviderStatus]`, `.timestamp`), pushed instead of polled from
+  `diagnostics()` and `positionProviderConnections()`. A new stream starts
+  with the current status, then yields only changes (timestamp ignored). It
+  re-evaluates on start/stop, provider attach/detach/swap/pause/resume, link
+  changes, each position update, authorization changes and — with a timer set
+  for that instant — the last fix ageing past `customPositionDuration`, which
+  is what raises `.positioningSourceOffline` and `.positioningSourceSilent`.
+  While either stands and beacons or UWB are enabled it also re-evaluates
+  every 2 s, so a beacon solve that emits nothing (phone at rest) still clears
+  it. Unlike the other streams it
+  does not finish on `stop()`: `.notStarted` is one of its answers. Nothing
+  runs while no stream is open. Same reason `diagnostics()` reports, from the
+  same code.
+- `ProximiioDiagnostics.NoPositionReason.positioningSourceSilent`: a running
+  position provider is attached, not every one reports itself offline, a fix
+  existed, and nothing has positioned the phone within
+  `positioning.customPositionDuration` — the relay is reachable but no longer
+  reports this device (tag out of coverage, battery dead, unassigned).
+  Evaluated after `.positioningSourceOffline` and
+  `.noViablePositioningInputs`, before the first-fix cases. Providers with
+  `connection == .unknown` (Quuppa, journey playback) count; providers the SDK
+  paused for the background do not; an app with no provider attached never
+  sees it. `positioningStatusChanges()` raises it from its freshness timer
+  with no other event. Additive enum case: an exhaustive `switch` over
+  `NoPositionReason` needs a new branch.
+- `CustomPositionProviding.connectionChanges()`: optional, returns `nil` by
+  default (source-compatible). A provider that returns a stream is heard the
+  moment its link flips; one that returns `nil` is sampled every 2 s while a
+  status stream is open. `RelayPositionProvider` / `RelayClient` and
+  `BlueiotCloudRelayPositionProvider` / `BlueiotCloudRelayClient` push theirs.
+  Additive API change.
+
+### Fixed
+
+- `BlueiotCloudRelayClient` no longer reports `online` after `stop()` when a
+  poll answer or stream message was already in flight.
+
+### Changed
+
+- **Behaviour change:** with a position provider attached, `nil` from
+  `noPositionReason` (on `diagnostics()` and `PositioningStatus`) now means a
+  fresh position exists. A reachable relay whose tag went quiet used to answer
+  `nil` while the dot was frozen; it now answers `.positioningSourceSilent`.
+  Apps that already render `nil` as "live" become correct without changes.
+- The freshness both `.positioningSourceOffline` and
+  `.positioningSourceSilent` test now also counts a beacon or UWB solve that
+  the `DistanceFilter` coalesced away, not only emitted fixes, so a hybrid app
+  standing still under working beacons is not reported as having lost the
+  venue. `diagnostics()` ages the last fix on the same clock as
+  `positioningStatusChanges()` (the wall clock outside tests).
+- Error recovery suggestions name **Proximi.io Portal** instead of "the
+  Proximi.io dashboard": `ProximiioAPIError.unauthorized` (the application
+  token of your app in Proximi.io Portal (Applications)) and `.notFound`,
+  the malformed-manifest cases of `OfflinePackageError`, and every
+  `WayfindingRoutingError.noRoute` reason that points at the path network.
+  The MinimalApp token comment says Proximi.io Portal too.
+
 ## [6.0.0-beta.44] — 2026-09-25
 
 ### Added
