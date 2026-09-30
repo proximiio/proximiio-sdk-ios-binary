@@ -6,6 +6,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.46] — 2026-09-30
+
+### Added
+
+- **`engineGroundFloorNumber` accepts a negative value.** A LocalSense engine
+  can number its ground floor −1 (storeys −1, 1, 2, 3, 4, no 0). At `-1` the
+  shift mirrors the positive case and applies at and below ground only:
+  engine −1 is level 0, engine −2 is level −1, engine 1 stays level 1, and
+  engine 0 maps to nothing and is reported. The rule for any value `g`: the
+  ground floor arrives as `g`; for `g > 0` levels ≥ 0 shift by `g`, for
+  `g < 0` levels ≤ 0 do; the other side passes through, and engine numbers
+  between 0 and `g` (excluding `g`) map to nothing. `0` and positive values
+  behave as before. Applies to `BlueiotCloudRelayConfiguration`,
+  `BlueiotEngineFloorNumbering`, its free `floorIDsByEngineNumber(_:engineGroundFloorNumber:)`
+  and the relay client's derived table and unmapped-floor diagnostics.
+
+### Fixed
+
+- **`BlueiotCloudRelayMessage.decimalTagID(_:)` reads a 17-to-20-digit id as
+  decimal.** Only fewer than sixteen digits counted as decimal, so a wider
+  `UInt64` id was tried as hex: it overflowed and fell through as text, or,
+  zero-padded (`00000000000007001`), parsed as a different tag. All-digit text
+  is now decimal at every width except exactly sixteen, which stays the
+  codec's zero-padded hex rendering; an all-digit id past `UInt64.max` is
+  returned trimmed and matches nothing. Same rule as Android (ADR-0032).
+  `BlueiotCloudRelayConfiguration.decimalTagID` and relay tag matching follow.
+
+### Documentation
+
+- New "Errors and failure handling" guide (`guides/errors.html`):
+  `ProximiioFailure` and its categories, `NSError` bridging,
+  `ProximiioErrorReport`, the failure each area reports and how (thrown,
+  `syncEvents()`, `positioningStatusChanges()`), the errors that are not
+  `ProximiioFailure`, and the map package's error surfaces. Linked from
+  Diagnostics, Wayfinding, Troubleshooting and Models.
+
 ## [6.0.0-beta.45] — 2026-09-29
 
 ### Added
