@@ -6,6 +6,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.47] — 2026-09-30
+
+### Fixed
+
+- **The indoor map no longer renders blank when the venue has a
+  `MultiLineString` feature.** `GeoJSONGeometry` modeled only Point,
+  LineString, Polygon and MultiPolygon; any other type decoded to
+  `geometry == nil`, `FeatureCache.save` wrote the feature back without a
+  `geometry` member, and `features()` handed the map a feature MapLibre's
+  `MLNShape(data:)` rejects — which fails the whole collection, so every
+  indoor layer went empty with no error. Seen in the field on a venue whose
+  `properties.type: "stroke"` features are MultiLineStrings. Every RFC 7946
+  type now round-trips through the cache, an unmodeled type is kept verbatim,
+  and a feature with no geometry is encoded as `"geometry": null` (both
+  `GeoJSONFeature` and `ProximiioFeature`) instead of omitting the member.
+
+### Added
+
+- **`GeoJSONGeometry` models every RFC 7946 geometry type.** New cases
+  `.multiPoint([[Double]])`, `.multiLineString([[[Double]]])`,
+  `.geometryCollection([GeoJSONGeometry])` (nesting capped at 16 levels) and
+  `.unknown(type: String, raw: JSONValue)`, which carries any other geometry
+  object verbatim and re-encodes it unchanged. The finite-coordinate gate
+  covers the new types (a non-finite or sub-2-component position still drops
+  the geometry; `.unknown` rejects any non-finite number). New helpers
+  `GeoJSONGeometry.lineStrings` (every line, collections recursed, polygon
+  rings excluded) and `GeoJSONGeometry.positions` (every position, flattened).
+- **`ProximiioFeature.Geometry.geometries`** and
+  `init(type:geometries:)`: a `GeometryCollection` read by `features()` keeps
+  its members (its `coordinates` is `.null`) instead of being dropped for
+  lacking `coordinates`.
+- **A `MultiLineString` routable path feeds the route network.**
+  `RoutableExtractor.routePaths(from:)` now reads `GeoJSONGeometry.lineStrings`:
+  a `class: "path"` MultiLineString contributes one `RoutePath` per member line
+  (same `id`, `level`, `properties`), joined to the network like separate
+  LineStrings; a GeometryCollection path contributes its member lines. The
+  count `loadRouteNetwork()` / `loadCachedRouteNetwork()` return is therefore
+  paths, not features. Level changers remain Point-only.
+
+### Changed
+
+- **Source-breaking for exhaustive `switch`es over `GeoJSONGeometry`:** the
+  four new cases make a `switch` without `default:` stop compiling. Add the
+  cases or a `default:` branch. The API baseline records the additions.
+
 ## [6.0.0-beta.46] — 2026-09-30
 
 ### Added

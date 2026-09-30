@@ -76,8 +76,8 @@ let package = Package(
     targets: [
         .binaryTarget(
             name: "ProximiioBinary",
-            url: "https://github.com/proximiio/proximiio-sdk-ios-binary/releases/download/6.0.0-beta.46/ProximiioBinary.xcframework.zip",
-            checksum: "538acf9a64cd1985993060759f334896c057d8edb3328737e90b4a8dd62fa351"
+            url: "https://github.com/proximiio/proximiio-sdk-ios-binary/releases/download/6.0.0-beta.47/ProximiioBinary.xcframework.zip",
+            checksum: "e6d6d3846427bdbc307ccedc3820da3d4ece49c35642d889caba3816d0407063"
         ),
         .target(
             name: "Proximiio",
