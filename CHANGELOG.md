@@ -6,6 +6,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.48] — 2026-09-30
+
+### Added
+
+- **Positioning availability as one bit.**
+  `Proximiio.positioningAvailabilityChanges() -> AsyncStream<Bool>` is
+  `positioningStatusChanges()` read as `noPositionReason == nil`: `true` while
+  a fresh position exists from any source (relay or other attached provider,
+  beacons, UWB, native), `false` for every reason it does not. It starts with
+  the current answer, yields only on a flip (a move between two reasons is not
+  one) and, like the status stream, survives `stop()`.
+  `onPositioningAvailabilityChange(_:)` is the closure form: the handler runs
+  on the main actor, and delivery lasts while the returned
+  `ProximiioSubscription` is alive (`cancel()`, or release it).
+  `isPositioningAvailable` (`get async`) is the one-off snapshot.
+
 ## [6.0.0-beta.47] — 2026-09-30
 
 ### Fixed
