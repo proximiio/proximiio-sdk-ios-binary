@@ -6,6 +6,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.49] — 2026-10-03
+
+### Fixed
+
+- **The binary SDK imports again on Xcode 26.3.** The `ProximiioBinary`
+  xcframework is now built with Xcode 26.3 (Swift 6.2), the oldest supported
+  Xcode, so it can be consumed from Xcode 26.3 and every newer Xcode.
+  6.0.0-beta.48 was built with Xcode 27.0 (Swift 6.4), and its
+  `.swiftinterface` used syntax Swift 6.2 cannot parse (module selectors such
+  as `Swift::Sendable`): `import Proximiio` failed with thousands of parse
+  errors on Xcode 26.3. The source package is unaffected, and nothing in the
+  public API changed. The binary build now refuses a newer toolchain, and the
+  build, verify and publish scripts reject an interface written by a newer
+  Swift or containing module selectors (`scripts/check-interface-toolchain.sh`,
+  `docs/RELEASING.md`, "Toolchain").
+
 ## [6.0.0-beta.48] — 2026-09-30
 
 ### Added
