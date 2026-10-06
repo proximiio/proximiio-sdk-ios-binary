@@ -6,6 +6,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.50] — 2026-10-06
+
+### Added
+
+- **Wristband binding client for the BlueIoT relay (`ProximiioBlueiot`).**
+  `BlueiotWristbandBinding` binds one phone to one wristband through a
+  relay-api install. The phone receives only that wristband's position; no
+  token it holds can follow another wristband. `restore()` confirms a stored
+  session at launch, `bind(tagID:)` binds after a scan (first bind, swap,
+  rescan or take-over), and `end()` ends the visit. Attach
+  `positionProvider` once with `attachPositionProvider(_:)`; it survives binds
+  and ends. `state` and `stateChanges()` report `BlueiotBindingState`
+  (`.unbound`, `.binding`, `.active(_:link:signal:)`, `.ended(_:)`), and
+  `BlueiotBindingEndReason` says why a visit ended. The SDK keeps the
+  anonymous visitor id and the session in the Keychain and refreshes the
+  access token before it expires. The app token is held in memory only, sent
+  only to the relay host and never logged. New types:
+  `BlueiotBindingConfiguration`, `BlueiotBindingTransport`,
+  `BlueiotBindingPolicy` (`policy()`, from `GET /v1/meta`),
+  `BlueiotBindingSession`, `BlueiotBindingState`, `BlueiotBindingLink`,
+  `BlueiotBindingSignal`, `BlueiotBindingEndReason`,
+  `BlueiotBindingDiagnostics` (`diagnostics`) and `BlueiotBindingError`
+  (`ProximiioFailure`, domain `io.proximi.sdk.blueiot.binding`, codes 1–17).
+- **`BlueiotWristbandBinding.locationReadiness()`** returns
+  `BlueiotLocationReadiness` (`.notRequired`, `.ready`, `.permissionNeeded`,
+  `.preciseLocationNeeded`) under the install's take-over policy. The SDK
+  never prompts for location; the app asks for permission or temporary full
+  accuracy when this says so. A take-over refused for location throws
+  `BlueiotBindingError.notInAuthorizedZone(cause:serverMessage:requestID:)`
+  with a `BlueiotLocationCause`.
+- **relay-api contract v0.8.5.** `GET /v1/meta` carries the app token, so a
+  multi-site install answers with the policy of the token's site; a refused
+  app token there is `.appTokenRejected`, even when a policy is cached. The
+  meta `server_time` corrects the timestamp of the location sent with a bind.
+  401 `binding_closed` ends the session on every route without a refresh or
+  a re-bind.
+
+### Changed
+
+- **New enum cases — an exhaustive `switch` needs a new branch.**
+  `CustomPositionProviderConnection.ended` (raw value `"ended"`) is for a
+  source that finished for good and will not deliver again until it is started
+  again (a visit ended, a wristband binding was closed or taken over).
+  `ProximiioDiagnostics.NoPositionReason.positioningSourceEnded` is raised **at
+  once** when every running provider that reports its link is `ended` or
+  `offline`, at least one is `ended`, and nothing else positions the phone.
+  The ended provider's last fix is expired immediately and the
+  custom-position window it opened is released (the same revocation a provider
+  pausing for the background gets), so `positioningAvailabilityChanges()`
+  turns `false` at once instead of after `customPositionDuration`. A fresh
+  beacon, UWB, native or other-provider fix keeps the answer `nil`; a
+  host-asserted `setCustomPosition(_:)` is never expired; providers with
+  `connection == .unknown` neither raise nor veto it. Evaluated after
+  `.notStarted` and before `.positioningSourceOffline`, which it outranks, as
+  it does `.positioningSourceSilent` and `.noViablePositioningInputs`. Both raw
+  values are new wire values in diagnostics reports.
+  `BlueiotWristbandBinding.positionProvider` reports `.ended` after a visit
+  ends, until the next bind.
+
+### Deprecated
+
+- **The shared-stream mode of the BlueIoT cloud relay is legacy**
+  (`BlueiotCloudRelayConfiguration`, `BlueiotCloudRelayPositionProvider`).
+  Anyone holding the shared stream token receives the position of every
+  wristband, so the mode suits only trusted or single-tenant setups and test
+  venues. Use `BlueiotWristbandBinding` instead; see MIGRATION.md, "Wristband
+  relay: shared stream → binding". This is a documentation-level deprecation:
+  the API is unchanged and there is no compiler warning.
+
 ## [6.0.0-beta.49] — 2026-10-03
 
 ### Fixed
