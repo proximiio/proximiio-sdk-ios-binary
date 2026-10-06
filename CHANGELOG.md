@@ -6,6 +6,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.51] — 2026-10-06
+
+### Fixed
+
+- **`positioningStatusChanges()` no longer reports a lost or silent source
+  while a source is still connecting.** Right after a wristband or relay was
+  connected, the stream first reported `positioningSourceOffline` (or
+  `positioningSourceSilent`), then `awaitingFirstFix`, then `nil`. The
+  sequence after connecting a source is now `awaitingFirstFix` → `nil`.
+  - `BlueiotCloudRelayPositionProvider` and the wristband binding's
+    `positionProvider` report `.unknown` while connecting: from `start()`,
+    a resume, a `bind(tagID:)` or a `restore()` until the first attempt
+    (the JSON warm-up, the stream or a poll) completes. They report
+    `.offline` only after an attempt failed or an open link dropped, so
+    `positioningSourceOffline` still follows a real failure at once. A new
+    bind after an ended visit no longer keeps the previous visit's `.ended`.
+  - `positioningSourceSilent` needs a fix that the current source produced.
+    After a provider is attached or swapped, or after a new binding, a stale fix from before reads as `awaitingFirstFix` until the
+    source delivers. A tag that delivered and then stopped is still reported
+    silent after `customPositionDuration`.
+
 ## [6.0.0-beta.50] — 2026-10-06
 
 ### Added
