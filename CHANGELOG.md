@@ -6,6 +6,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.52] — 2026-10-06
+
+### Added
+
+- **Translated feature and floor titles.**
+  - `ProximiioFeature.title(language:)` reads `properties.title_i18n` (an
+    object, or a JSON string that is parsed), then the base language
+    (`"en"` for `"en-US"`), then `properties.title`.
+    `titleTranslations` returns all title translations.
+  - `ProximiioFeature.localizedString(forProperty:language:)` and
+    `translations(forProperty:)` read any `<name>_i18n` property, such as
+    `description_i18n` and `url_i18n`.
+  - `ProximiioFloor.title(language:)` reads `metadata["title_<language>"]`,
+    then `name`. `titleTranslations` returns all floor title translations.
+  - `ProximiioLanguage.preferred` is the default language: the first device
+    language the app is localized for, otherwise the app's development
+    localization, otherwise `"en"`, normalized to a base language code
+    (`"en-GB"` → `"en"`, `"zh-Hant-TW"` → `"zh-Hant"`, `"Base"` → `"en"`).
+    `preferred(preferredLocalizations:)`,
+    `preferred(availableLocalizations:preferredLanguages:developmentLocalization:)`
+    and `normalized(_:)` expose the same rule for explicit inputs.
+
+### Documentation
+
+- `NSLocationAlwaysAndWhenInUseUsageDescription` is now listed as required in every app. The SDK binary references `requestAlwaysAuthorization`, so App Store validation rejects an upload without the key (`ITMS-90683`) even when the app never requests Always. The key is requested at runtime only by `requestPermissions(always: true)`. Updated in the installation and permissions pages and the README.
+- Swift samples that `switch` over SDK enums now include `@unknown default`, and the installation and wristband binding pages note that the library-evolution binary requires it.
+
 ## [6.0.0-beta.51] — 2026-10-06
 
 ### Fixed
