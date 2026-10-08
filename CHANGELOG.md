@@ -6,6 +6,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.54] — 2026-10-09
+
+### Added
+
+- **Route options for accessible routes.** New `RouteOptions` with the nine
+  avoid flags of the Proximi.io routing service (`avoidElevators`,
+  `avoidEscalators`, `avoidStaircases`, `avoidRamps`, `avoidNarrowPaths`,
+  `avoidHills`, `avoidRevolvingDoors`, `avoidTicketGates`, `avoidBarriers`) and
+  a `profile` (`.pedestrian`, `.wheelchair`, `.stroller`, `.staff`).
+  `.wheelchair` avoids staircases, escalators and narrow paths; `.stroller`
+  avoids staircases and escalators. Pass them to the new
+  `computeRoute(from:to:level:options:)` and
+  `computeRoute(from:fromLevel:to:toLevel:options:)` overloads on `Proximiio`
+  and `WayfindingRouter`. Door, ticket-gate and barrier point features with a
+  `radius` are installed by `loadRouteNetwork()` as `RouteObstacle` values
+  (`WayfindingRouter.setObstacles(_:)`).
+- **`NoRouteReason.noAccessibleRoute(blockedBy:)`** (failure code 6). Thrown
+  when a route exists only without the requested options. `blockedBy` names
+  the avoidances that blocked it. Exhaustive `switch`es over `NoRouteReason`
+  need the new case or `@unknown default`.
+- **One-way escalators.** A level changer with `properties.direction` `"up"`
+  or `"down"` is ridden only that way (`LevelChanger.direction`). Changers
+  without a direction run both ways, as before.
+- **Travel time.** `ComputedRoute.durationSeconds`,
+  `ComputedRoute.estimatedArrival(departingAt:)` and
+  `RouteInstruction.durationSeconds`. The step durations add up to the route
+  duration.
+- **`RouteCostModel`** in `ProximiioConfiguration.wayfinding.costModel` and
+  `WayfindingRouter.costModel`: the walking speed and the time each changer
+  type takes, used to rank routes and to compute `durationSeconds`. The
+  default, `RouteCostModel()`, is walking time only (1.2 m/s) and changes one
+  floor at a time, so routes are the same as in beta.53. Two presets are
+  opt-in:
+  - `RouteCostModel.realistic`: elevator 30 s wait plus 5 s per floor,
+    stairs 20 s, escalator 15 s, ramp or hill 40 s per floor. An elevator
+    ride over several floors is one `LevelChange` (for example 0 → 2). One
+    floor by stairs beats a nearby elevator; three or more floors favor the
+    elevator.
+  - `RouteCostModel.elevatorPreferred`: elevator 10 s wait plus 5 s per
+    floor, stairs 30 s, escalator 25 s, ramp 45 s per floor. At the same
+    walking distance the elevator wins for any number of floors.
+
+  With a preset, set `levelChangeCostMeters` to 0 to use the preset's times
+  alone.
+- **Travel-time matrix.** `Proximiio.routeDurations(between:options:)` and
+  `WayfindingRouter.routeDurations(between:options:)` return the seconds from
+  every `RoutePoint` to every other one, `nil` where no route exists. Each
+  entry equals the `durationSeconds` of the matching `computeRoute` call. One
+  search runs per origin, so 12 stops cost 12 searches instead of 132 routes.
+- **`WayfindingRouter.setNetwork(paths:levelChangers:obstacles:)`** installs a
+  whole network with one graph build.
+
+### Changed
+
+- **Faster route queries.** The router builds the adjacency list and a grid
+  index for snapping once per network load. A query no longer copies the
+  graph, scans every edge to snap, or rebuilds the adjacency. Routes are
+  unchanged. On a three-floor venue with about 9,400 edges, 132 routes took
+  3.1 s before and 0.9 s now; the matrix for the same 12 stops takes 0.5 s
+  (debug build).
+- **Faster network loading.** Building the routing graph (joining nearby
+  points, splitting corridors at T-junctions and crossings, attaching level
+  changers) checks only the points and segments near each other instead of
+  every pair. The graphs and routes are unchanged. On the same venue the
+  build took 30 s before and 0.4 s now in a debug build, and 4.3 s before and
+  0.03 s now in a release build.
+- **Route queries run off the `Proximiio` actor.** The `computeRoute`
+  overloads are `nonisolated`, so a long computation no longer delays other
+  SDK calls. Callers still `await` them.
+- **Graph rebuilds no longer block route queries.** A rebuild (network load,
+  `joinToleranceMeters`, `levelChangerRadiusMeters`) builds without holding
+  the router's lock; queries keep using the previous graphs until it
+  finishes. `loadRouteNetwork()` builds the graphs once instead of twice.
+
+- **Default routes are unchanged.** The default router picks the same
+  routes as beta.53: walking distance plus 15 m per floor changed, the same
+  for every changer type, one `LevelChange` per floor. The nearer changer
+  still wins, so an elevator never loses to stairs on cost alone. Only data
+  that sets `properties.direction` on a changer can route differently (see
+  one-way escalators above). `durationSeconds` reports the same ranking in
+  seconds: the walk at 1.2 m/s plus 12.5 s (15 m) per floor.
+- **`levelChangeCostMeters` keeps its beta.53 meaning.**
+  `WayfindingRouter.defaultLevelChangeCostMeters` is still 15. The value is
+  the distance-equivalent cost of each floor changed, added on top of
+  `costModel` at the walking speed. With the default cost model it is the
+  whole floor-change cost, so code that set `levelChangeCostMeters` against
+  beta.53 (0, 30, …) gets the same routes.
+
 ## [6.0.0-beta.53] — 2026-10-08
 
 ### Added
