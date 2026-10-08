@@ -6,6 +6,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.53] — 2026-10-08
+
+### Added
+
+- **Routing knobs in the configuration.** `ProximiioConfiguration.wayfinding`
+  (a new `WayfindingRouter.Configuration`) sets the router's off-network snap
+  threshold, per-floor-change cost and level-changer radius when the SDK is
+  created. The defaults (15 m, 15 m, 4 m) route exactly as before.
+  `WayfindingRouter(configuration:options:)` takes the same value.
+
+### Changed
+
+- **`ProximiioConfiguration`'s memberwise initializer has a new trailing
+  `wayfinding:` parameter.** It has a default, so existing source compiles
+  unchanged. Code built against an earlier binary has to be rebuilt.
+
+### Fixed
+
+- **Elevators and stairs beside a sparse corridor now connect.** A level
+  changer attaches to the nearest point of the nearest corridor within its
+  radius, splitting the corridor there, instead of only to the nearest graph
+  vertex. An elevator 2 m from a long straight corridor whose vertices were
+  more than 4 m away used to give `noLevelTransition` or `disconnected`.
+- **Routes always end with `.arrive`.** A route whose destination snaps onto
+  the upper end of a floor change ended with `.levelChange` and no `.arrive`.
+  A route whose origin and destination snap to the same point had no
+  instructions; it now has just `[.arrive]`.
+- **The connector taken is the one named.** When a staircase and an elevator
+  attach to the same graph points, `levelChanges` and the `.levelChange`
+  instruction now report the changer the route actually crosses, not the one
+  read last.
+- **`WayfindingRouter.clear()` also clears the installed paths**, so a later
+  `joinToleranceMeters` change no longer rebuilds the cleared network.
+
 ## [6.0.0-beta.52] — 2026-10-06
 
 ### Added
