@@ -6,6 +6,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.55] — 2026-10-09
+
+### Added
+
+- **`ProximiioConfiguration.barometerEnabled`** (default `true`). Set it to
+  `false` and `start()` creates no `CMAltimeter`, so barometric floor
+  detection cannot raise the Motion & Fitness prompt. Floors still change from
+  beacon floor hints, from relay and other provider positions, and from manual
+  floor overrides. The memberwise `ProximiioConfiguration` initializer gains a
+  defaulted `barometerEnabled:` parameter (source compatible).
+  `ProximiioDiagnostics.ConfigurationSummary.barometerEnabled` and the
+  diagnostics `Floor` line report the setting.
+
+### Fixed
+
+- **`relayOnly` no longer raises the Motion prompt.** `start()` started the
+  barometer for floor detection on every configuration, and `CMAltimeter`
+  raises the Motion & Fitness prompt. `relayOnly(token:runsInBackground:)`
+  now sets `barometerEnabled` to `false`; the relay reports the floor. Motion
+  permission is needed only when the app enables PDR or turns
+  `barometerEnabled` back on. Other configurations are unchanged.
+
 ## [6.0.0-beta.54] — 2026-10-09
 
 ### Added
