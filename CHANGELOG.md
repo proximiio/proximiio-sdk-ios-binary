@@ -6,6 +6,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.56] — 2026-10-12
+
+### Added
+
+- **`ProximiioGeofence.remoteId`.** The top-level `remote_id` of every
+  `/core/geofences` record (an artwork's inventory number, a gallery's id in
+  the customer's CMS) was dropped when decoding, so it never reached
+  `GeofenceEvent.entered`/`.exited`. It is now decoded (lossy string, like the
+  other fields), encoded back as `remote_id`, and part of equality. The
+  memberwise initializer gains a trailing defaulted `remoteId:` parameter
+  (source compatible).
+
+### Fixed
+
+- **Polygonal geofences now fire.** The API defines the top-level `polygon`
+  member as `[latitude, longitude]` vertex pairs. The SDK read it as
+  `[longitude, latitude]`, so every server-derived ring was mirrored to another
+  place and never reported inside. `ProximiioGeofence` and
+  `ProximiioPrivacyZone` now swap each vertex when decoding and swap it back
+  when encoding. The public `polygon` property keeps its documented
+  `[longitude, latitude]` order, so engine and map code is unchanged. A GeoJSON
+  geometry in `area` (written by the management app) is `[longitude, latitude]`
+  and is read as before.
+
 ## [6.0.0-beta.55] — 2026-10-09
 
 ### Added
