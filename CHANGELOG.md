@@ -6,6 +6,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.57] — 2026-10-12
+
+### Fixed
+
+- **One tag-id rule for every Blueiot entry point.** The rule agreed with
+  Android (ADR-0032) and relay-api — trimmed, all-digit text is decimal except
+  at exactly 16 digits (the codec's zero-padded 8-byte hex rendering), `0x…`
+  and other hex text is hex — now lives in one internal normaliser used by
+  `BlueiotCloudRelayMessage.decimalTagID(_:)`,
+  `BlueiotConfiguration.parsedSubscribeTagIDs()`,
+  `BlueiotTagBroadcast.parseTagID(_:)` and the direct engine's `myTagID` match:
+  - `decimalTagID` now trims newlines as well as spaces (Kotlin `trim()`), so a
+    pasted `"7001\n"` no longer stays unmatched text.
+  - `parsedSubscribeTagIDs()` and `parseTagID(_:)` read exactly-16-digit ids
+    as the codec's hex rendering instead of decimal (`0000000000007001` =
+    0x7001, as on the relay path and Android). Signs (`+7001`) are no longer
+    accepted as hex.
+  - The direct engine path (`BlueiotEngineClient`) matched `myTagID` by raw
+    string against the engine's rendering, so a decimal or `0x` `myTagID`
+    (`"3735928559"` for `00000000DEADBEEF`) never produced a blue dot. It now
+    compares numerically; text already in the configured rendering
+    (`tagIDFormat` × `tagIDBytes`) is read in that shape.
+    `BlueiotPositionProvider.latestRaw()` looks the tag up the same way.
+  - `parseTagID(_:)` still returns `UInt32?` by design: the phone's broadcast
+    frame carries a 4-byte (v2) or 2-byte (general) id, so a 6-byte wristband
+    id such as `0xC3000061FC24` cannot be emulated and returns `nil`. Now
+    documented.
+  - Known shared limitation (Android, relay-api): a genuine 16-digit decimal id
+    is read as hex.
+
 ## [6.0.0-beta.56] — 2026-10-12
 
 ### Added
