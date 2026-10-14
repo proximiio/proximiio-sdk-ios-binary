@@ -6,6 +6,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.58] — 2026-10-14
+
+### ⚠️ Behaviour change
+
+- **Visitor reporting is on by default.**
+  `ProximiioConfiguration.visitorReportingEnabled` now defaults to `true` (it
+  was `false` since 6.0.0-beta.31), in `init(token:)` and in every preset
+  (`default`, `highAccuracy`, `lowPower`, `relayOnly`), as on Android. Every app
+  on this SDK now registers the visitor (`PUT /core/visitors`), uploads
+  positions in batches every 60 s and sends geofence enter/exit events as they
+  happen, unless it sets `visitorReportingEnabled = false` or calls
+  `setVisitorReportingConsent(false)`. `visitorReportingConsent` therefore
+  starts `true`. The SDK's privacy manifest now declares both uploaded data
+  types: **Precise Location** (App Functionality, Analytics) and **Device ID**,
+  the anonymous visitor id (Analytics), neither linked to the user's identity
+  nor used for tracking. Apps must declare the same in their App Store privacy
+  details. An app that links `Proximiio.visitorId` to its own user accounts
+  declares the data as linked itself. With reporting off, the app still
+  collects location for app functionality. Apps that need the user's consent
+  first should configure `visitorReportingEnabled = false` and call
+  `setVisitorReportingConsent(true)` once the user agrees.
+- **Geofence events are sent as they happen.** With visitor reporting on, each
+  geofence enter/exit now goes out at once as one `POST /core/events` with a
+  single `{ "event", "data" }` object, in order, instead of waiting up to 60 s
+  for the batched `POST /core/events/batch`. Without network, or after a failed
+  send, events stay queued on the device (500 at most, oldest dropped first).
+  When the network path is back, or on the next flush (60 s tick,
+  backgrounding, termination, `stop()`), the queue goes out via
+  `POST /core/events/batch`; delivery then returns to one event per request.
+  HTTP 400/413/422 marks an event invalid and drops it; any other failure keeps
+  it. Nothing is uploaded before the visitor is registered, as before.
+- **Only geofence enter/exit is uploaded to visitor analytics.** Beacon
+  found/lost and privacy-zone enter/exit are no longer sent, and `stop()` no
+  longer uploads a closing privacy-zone exit. `beaconEvents()` and
+  `geofenceEvents()` still deliver them to the app. Anything server-side fed by
+  those events (dashboards, webhooks, counters) stops receiving iOS data.
+- **Batched event delivery with `eventBatching: true`.** It restores the
+  previous delivery: geofence events wait for the periodic flush and go out in
+  batches. It does not bring back beacon or privacy-zone events, and it does
+  not turn reporting off (that is `visitorReportingEnabled = false`).
+- **Initializer signature.** `ProximiioConfiguration.init` gains
+  `eventBatching: Bool = false` between `analyticsPathPrefix:` and
+  `positioning:`. Source compatible: existing call sites compile unchanged.
+  The API baseline check reports the changed signature as breaking; binary
+  consumers recompile against the new release, as with every beta.
+
+### Added
+
+- **`ProximiioConfiguration.eventBatching`** (default `false`). `true` uploads
+  geofence events in batches on the periodic flush (every 60 s, and on
+  backgrounding, termination and `stop()`), as in 6.0.0-beta.57 and earlier. A
+  non-`"core"` `analyticsPathPrefix` always batches: only the `core` deployment
+  has a single-event endpoint. Positions stay batched every 60 s either way.
+  `ProximiioDiagnostics.ConfigurationSummary.eventBatching` reports the
+  setting; its memberwise initializer gains a trailing defaulted
+  `eventBatching:` parameter.
+- **Privacy manifest for visitor reporting.** `ProximiioCore` ships a
+  `PrivacyInfo.xcprivacy` declaring `NSPrivacyCollectedDataTypePreciseLocation`
+  (App Functionality, Analytics) and `NSPrivacyCollectedDataTypeDeviceID`
+  (Analytics), both not linked and not used for tracking. `NSPrivacyTracking`
+  stays `false`; the required-reason API declarations are unchanged. The binary
+  release's single merged manifest now merges entries by data type, so it
+  carries one Precise Location entry with both purposes.
+  `ProximiioBlueiot` ships its own `PrivacyInfo.xcprivacy`: apps using its
+  wristband binding also get **Device ID** for App Functionality (the binding
+  id, sent only to the relay), not linked, no tracking. In the binary release
+  it merges into the one Device ID entry (App Functionality, Analytics).
+
 ## [6.0.0-beta.57] — 2026-10-12
 
 ### Fixed
