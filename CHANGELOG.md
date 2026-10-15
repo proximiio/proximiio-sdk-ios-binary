@@ -6,6 +6,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.59] — 2026-10-15
+
+### ⚠️ Behaviour change
+
+- **`X-Visitor-Id` and `X-Proximiio-SDK` on every Proximi.io API request.**
+  Every request the SDK sends to `apiBaseURL` and `fallbackAPIBaseURLs`,
+  failover retries included, now carries both headers. No other host receives
+  them: relay, RTLS, live view and wristband-binding requests carry neither.
+  `X-Visitor-Id` is the analytics visitor id (`Proximiio.visitorId`) while
+  visitor reporting consent is granted. Without consent it is a random
+  lowercased UUID kept in memory for the `Proximiio` instance and never
+  persisted, so it changes on every launch. It switches as soon as
+  `setVisitorReportingConsent(_:)` changes the consent, and `resetVisitorId()`
+  replaces it in both cases. `X-Proximiio-SDK` is
+  `ios/<ProximiioPackage.version>`. proximiio-api rate-limits per device on
+  `X-Visitor-Id`, because visitors on a venue's guest Wi-Fi or a mobile network
+  share one IP address; a request without it shares the app's budget for
+  unidentified clients. A proxy in front of an on-premises API must pass both
+  headers through. The wristband binding's own `X-Visitor-Id` to relay-api is a
+  different id and is unchanged.
+- **Core privacy manifest: Device ID gains App Functionality.** With visitor
+  reporting consent the visitor id is now also the `X-Visitor-Id` header, which
+  the API uses for per-device rate limiting. `ProximiioCore`'s
+  `NSPrivacyCollectedDataTypeDeviceID` entry declares App Functionality and
+  Analytics, still not linked and not used for tracking. Apps declare Device ID
+  for App Functionality and Analytics in their App Store privacy details. The
+  binary release's merged manifest already carried both purposes (App
+  Functionality came from `ProximiioBlueiot`), so it is unchanged.
+
+### ⚠️ Source break
+
+- **New `BlueiotBindingError` cases** (relay-api contract v0.11.0):
+  `swapBandsApart(requestID:)` (code 18), `swapAtReception(requestID:)`
+  (code 19) and `signingUnavailable(retryAfter:requestID:)` (code 20). An
+  exhaustive `switch` over `BlueiotBindingError` without a `default` branch no
+  longer compiles: add the three cases. Codes 1–17 are unchanged. Before this
+  release `403 swap_bands_apart` and `403 swap_at_reception` arrived as
+  `.unexpected(code:status:message:requestID:)`, and `503 signing_unavailable`
+  as `.server(status: 503, requestID:)`.
+
+### Added
+
+- **`Proximiio.apiVisitorID`** (`nonisolated`, synchronous, thread-safe): the
+  `X-Visitor-Id` value the SDK sends to the Proximi.io API now. For code that
+  calls the API host itself, for example the map package's style and tile
+  requests; send it to that host only.
+- **`Proximiio.apiSDKToken`** (`nonisolated static`): `ios/<version>`, the
+  `X-Proximiio-SDK` value. A package that calls the API itself sends its own
+  token first, most specific product first as in a `User-Agent`: the map
+  package sends `ios-map/<map version> ios/<sdk version>`.
+- **Wristband swap proof of possession** (relay-api 0.11). Outside reception, on
+  sites with a swap distance, a swap to a new wristband needs the current one
+  next to it. `BlueiotBindingError.swapBandsApart` ("Hold your current wristband
+  next to the new one and scan again.") and `.swapAtReception` ("Your wristband
+  isn't reachable. Please swap it at the reception desk.") report a refused
+  swap; the current session is kept. Both are `.permission`.
+- **`BlueiotBindingError.signingUnavailable(retryAfter:requestID:)`**: `503
+  signing_unavailable` on a bind or a refresh, when the relay's token-signing
+  key is briefly unreachable. `retryAfter` is in seconds, from `Retry-After` or
+  the body's `retry_after`, like `.rateLimited`. Category `.server`.
+- **`BlueiotBindingPolicy.swapNearMeters`** (`Double?`): `swap_near_m` from
+  `GET /v1/meta`, the distance the current and the new wristband may be apart
+  for a swap outside reception. `nil` when the site has no distance check or the
+  relay is older. A new initializer takes `swapNearMeters:` after
+  `bindReceptionRequired:`; the existing one stays and sets it to `nil`.
+
+### Changed
+
+- **Token refresh on `503 signing_unavailable`.** The proactive refresh and the
+  stream's reconnect loop keep the current access token and the same refresh
+  token, never end the session and try again after `retryAfter` (without one:
+  10 s for the proactive refresh, the usual backoff in the stream loop). A
+  refused stream connect whose refresh or re-bind meets it counts no strike
+  towards `.sessionLost`. The automatic re-bind after `refresh_token_invalid`
+  keeps the session on it instead of ending with `.sessionLost`. Other 5xx
+  answers are handled as before.
+- **`BlueiotBindingPolicy.bindReceptionRequired`** is documented as a setting of
+  the app token's site (relay-api 0.11, default on), so it can be `false` on a
+  venue install too. The SDK still reads it from `GET /v1/meta` with the app
+  token; app logic is unchanged.
+
 ## [6.0.0-beta.58] — 2026-10-14
 
 ### ⚠️ Behaviour change
