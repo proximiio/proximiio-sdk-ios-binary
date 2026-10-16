@@ -6,6 +6,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.60] — 2026-10-16
+
+### ⚠️ Behaviour change
+
+- **One `LevelChange` per ride.** A route that rides one elevator or
+  staircase over several floors has one entry in `ComputedRoute.levelChanges`,
+  from the floor where the ride starts to the floor where it ends, and one
+  `.levelChange` instruction. Before, every floor was a separate entry, and an
+  app that rendered the first instruction named an intermediate floor. Floors
+  crossed in one direction with no walk in between are one ride when they use
+  the same changer feature, or a changer of the same type within 1 m (one
+  shaft drawn as one feature per floor). The map's floor-change markers come
+  from `levelChanges`, so a ride has one marker. `durationSeconds`, the
+  instruction durations and the travel-time matrix are unchanged: a ride costs
+  the sum of its floors. `RouteCostModel.elevatorRidesSpanFloors` now decides
+  only whether a ride pays the elevator wait once or on every floor. Code that
+  read the number of floors from `levelChanges.count` reads the number of
+  rides now.
+- **`properties.levels` restricts the floors a level changer connects.** A
+  changer whose feature has `levels` connects exactly those floors. Its own
+  `level` is not added: a lift placed on level 0 with `levels` `[1, 2, 3, 4]`
+  does not stop on level 0. A floor outside the list is never connected, even
+  when a corridor on it is within `levelChangerRadiusMeters`. A list with
+  fewer than two floors connects nothing. Between its floors the changer is
+  one direct ride, costed per floor of its `levels` passed: stairs serving 1–4
+  cost three floors from 1 to 4, also when no corridor meets them on 2. Before,
+  `levels` was ignored: a changer connected every floor with a corridor within
+  the radius, and a floor without one was not counted. Routes in venues whose
+  changers carry `levels` can change. A changer without usable `levels`
+  connects floors as before.
+- **The wristband binding binds again by itself less often.** After the relay
+  refuses the refresh token, `BlueiotWristbandBinding` binds the stored
+  wristband again only when `GET /v1/bindings/current` reports the session
+  active, or when an earlier refresh with the same token got no answer. A
+  session the relay reports closed ends with the relay's reason. A session the
+  relay gives no verdict on ends with `.sessionLost`, where the SDK used to
+  bind again. The visitor then scans the wristband again. See Fixed.
+
+### Added
+
+- **`LevelChanger.levels`** and
+  `LevelChanger.init(id:type:coordinate:level:direction:levels:)`: the floors a
+  changer serves. `LevelChangerExtractor.levelChangers(from:)` reads them from
+  `properties.levels`: numbers or numeric strings, other entries ignored, a
+  single value as a one-entry list. The floors are sorted and each floor
+  appears once (`FloorLevel.matches`). The changer's own `level` is not added.
+  `nil` without usable `levels`.
+
+### Fixed
+
+- **A wristband session another phone took over no longer comes back by
+  itself.** When a phone missed the `SUPERSEDED` close (app suspended,
+  offline) and the relay later refused its tokens, `BlueiotWristbandBinding`
+  bound the stored wristband again with its one automatic re-bind (decision
+  D3). relay-api deletes a closed binding's refresh tokens, so the refresh
+  answered `refresh_token_invalid` instead of `binding_closed`; once the other
+  phone had moved to another wristband, the band was free and the automatic
+  bind succeeded at reception, or anywhere on a site without the reception
+  rule. Before an automatic re-bind the SDK now calls
+  `GET /v1/bindings/current` with the old access token. A closed session ends
+  with the relay's reason (`.ended(.superseded)`), without a bind. An active
+  one is bound again, as before. Without a verdict (relay-api answers an
+  expired access token with `unauthorized` on every route), the SDK binds again
+  only if an earlier refresh with the same refresh token got no answer, so the
+  relay may have rotated it (a lost rotation, the case D3 exists for);
+  otherwise the session ends with `.sessionLost` and the visitor scans again.
+  The lost answer is kept in the stored session across a relaunch. When the
+  check gets no answer, the session is kept and the check runs again with the
+  next refresh.
+- **A move close during the automatic re-bind names the end.** If a
+  `SUPERSEDED` or `REPLACED` close arrives while the automatic re-bind waits
+  for its answer and the bind then fails, the session ends with that reason
+  instead of `.sessionLost`.
+- **The stream re-binds only after a refresh that went through.** For an
+  access token the relay refuses on connect, "refresh once, then re-bind once"
+  now counts only answered attempts: a refresh without an answer, rate-limited
+  or refused with a server error is no strike, and the next refused connect
+  refreshes again.
+- **A route from level 1 to level 4 named level 3 or level 2.** The router
+  ignored `properties.levels` and reported one floor change per floor. In a
+  venue with stairs serving levels 1–4 that meet no corridor on level 2, and a
+  lift serving levels 0–4, the default route came out as stairs 1→3 and 3→4,
+  so the instruction said "level 3"; with staircases and escalators avoided it
+  came out as lift 1→2, 2→3 and 3→4, so it said "level 2". Both are now one
+  change to level 4: the stairs with the default options, the lift with
+  staircases and escalators avoided.
+
 ## [6.0.0-beta.59] — 2026-10-15
 
 ### ⚠️ Behaviour change
