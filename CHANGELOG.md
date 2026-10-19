@@ -6,6 +6,107 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.61] — 2026-10-19
+
+### ⚠️ Behaviour changes
+
+- **`mapStyle()` reads the stored style.** It downloads `GET /v7/geo/style`
+  only while no style is stored, stores the download and returns the stored
+  style on later calls, in this run and the next, without waiting for the
+  network. Such a call also checks the service in the background once per run
+  (the instance, and again after `stop()`) — `If-None-Match` with the stored
+  download's `ETag` when it had one — and stores a changed style. Only an
+  answered check counts: after a failed one the next call checks again, one
+  check per call at most. `stop()`, `signOut()` and `resetAndRefresh()` cancel
+  a check in flight and drop its late answer, and of two answers that cross
+  the one with the later `Date` is kept. The audit sync applies `Style`
+  records where the feed carries them. Before,
+  every call downloaded the style. Call the new `refreshMapStyle()` for the
+  service's current document, or follow `venueDataChanges()`.
+- **`loadRouteNetwork()` is a conditional request.** With the whole feature
+  collection stored, it sends `If-None-Match` with the `ETag` of each page of
+  the stored download. When every page answers `304 Not Modified`, the store
+  and the installed route network are kept, nothing is downloaded or rebuilt,
+  and the call returns the installed path count. A run that has no network
+  from the store yet installs the stored one. A changed page, a store the feed
+  changed since the download, or a partial store downloads the whole
+  collection again, as every call did before.
+- **A sync pass that changed features rebuilds the route network.** When the
+  audit sync applies `Feature` records, the SDK rebuilds the route network and
+  the route snapper from the store, if the installed network came from
+  `loadRouteNetwork()` or `loadCachedRouteNetwork()` and the store holds the
+  whole collection with a usable geometry on every feature. Routes computed
+  after the pass use the new paths and level changers. A network installed
+  with `setRouteNetwork(_:)` is not replaced, and an app that never loaded a
+  network does not get one. While the router holds a download the store could
+  not save, the store's older features are neither built from nor reported.
+- **Audit records are stored under the canonical entity name.** A record whose
+  feed spelling differs from the SDK's name (a tenant alias such as `Inputs`,
+  or `places`) is stored as `Input`, `Place`, … and `SyncEvent.updated` /
+  `.deleted` carry that name. Before, it was stored under the feed's spelling,
+  where no accessor read it, and a delete under that spelling never reached
+  the canonical row. On the first launch of this version, rows stored under
+  another spelling move to the canonical name (the newer row wins), and the
+  next sync pass replays the audit feed from the start once, so those deletes
+  apply, and then applies `/core/package` again, so rows the package changed
+  outside the feed keep the package's version. That pass emits
+  `SyncEvent.updated` / `.deleted` for every record in the feed. Names the SDK
+  does not know are stored and reported as before.
+- **The snapshot reconcile announces only the rows that changed.** A new
+  `/core/package` writes and emits `SyncEvent.updated` only for rows whose
+  stored JSON differs from the package's. Before, it announced every row of
+  the package, so one edited input re-announced every floor, place and
+  geofence.
+- **`amenities()` downloads until the store holds the whole catalogue.**
+  Amenities the audit sync stored on their own no longer count as the
+  catalogue. A download, or an offline seed or package with a non-empty
+  `amenities` group, makes it whole. The online `/core/package` bootstrap
+  stores the amenities it carries but does not count as the catalogue. An install that stored the catalogue with
+  an earlier SDK downloads it once more on its first `amenities()` call; when
+  that download fails, `amenities()` returns the stored amenities instead of
+  throwing. An organization with no amenities is no longer downloaded on every
+  call.
+
+### Added
+
+- **`venueDataChanges() -> AsyncStream<VenueDataChange>`**: names the kinds of
+  stored venue data that changed, so a map or an app re-reads only those. One
+  `VenueDataChange` after each sync pass that changed stored data (after the
+  engines and the route network have it), and after a download that changed
+  it: `loadRouteNetwork()` (`.features`), `amenities()` / `refreshAmenities()`
+  (`.amenities`), `mapStyle()` (its download or its background check) /
+  `refreshMapStyle()` (`.style`). A `304`, or the same data downloaded again,
+  emits nothing. `.features` and `.amenities` are emitted only while the store
+  holds the whole collection: on a fresh install, after `resetAndRefresh()`,
+  a wipe after an expired delta or a recreated store, the feed's records alone
+  are not reported until the next download. Run-scoped like `syncEvents()`: it
+  finishes on `stop()`.
+- **`VenueDataChange`** (`kinds`, `contains(_:)`) and **`VenueDataKind`**:
+  `.features`, `.amenities`, `.style`, `.floors`, `.places`, `.geofences`.
+  `VenueDataKind` is a struct, so later SDKs can add kinds; test with
+  `contains(_:)`. The SDK never emits an empty `kinds`.
+- **`refreshMapStyle()`** downloads the style and replaces the stored one;
+  **`cachedMapStyle()`** reads the stored style without the network.
+
+### Fixed
+
+- **`Style` and `Journey` audit records are no longer reported as dropped.**
+  They are stored under their canonical names. `AmenityCategory` records were
+  already stored.
+- **A fresh install no longer takes a few amenities from the audit feed for
+  the whole catalogue.** The feed carries `Amenity` records only for amenities
+  changed after it began carrying them; `amenities()` served those alone, and
+  most POIs had no icon or title.
+- **A stored style is a MapLibre document.** A `Style` record without one (a
+  record that only renames the style, for example) is not served, and a
+  downloaded body that is not a style does not replace the stored style. A
+  downloaded style is stamped with the response's `Date`, so a device clock
+  running ahead does not hide a later `Style` record.
+- **Relay and wristband-binding streams no longer drop after 15 s of
+  silence.** While the tag or band sent nothing, a keep-alive that came a
+  little late ended the stream and the client reconnected; a dead stream is
+  now detected after up to 45 s instead of 15 s.
+
 ## [6.0.0-beta.60] — 2026-10-16
 
 ### ⚠️ Behaviour change
