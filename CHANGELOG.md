@@ -6,6 +6,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.62] — 2026-10-22
+
+### ⚠️ Behaviour changes
+
+- **`journeys()` lists every journey.** It pages `GET /v7/geo/journeys` with
+  `from`/`size` (500 per request, the API's largest page) until `Record-Total`
+  is reached or a page comes back short. Before, it sent one request without
+  them and got the API's default page: the 100 most recently edited journeys.
+- **The route network leaves out venue features that are not in degrees.** A
+  path, level changer or obstacle with a position outside finite degrees (for
+  example stored in EPSG:3857 metres) is skipped, and `loadRouteNetwork()`,
+  `loadCachedRouteNetwork()` and `installedRoutePathCount` count only the paths
+  installed. A route endpoint that is not in degrees is off the network.
+  `features()` and the cache keep such features unchanged.
+- **A level that is not finite reads like one that does not parse.** A path
+  goes on level 0, a level changer or obstacle has no level, and a floor
+  decodes level 0. A route, a travel time or a snap on such a level finds
+  nothing.
+
+### Fixed
+
+- **A list page the API cut short no longer loses rows.** The API ends a list
+  answer early to stay within its response budget (`x-proximiio-truncated:
+  true`). Feature downloads start the next page after the features received,
+  not at the next multiple of the page size; `amenities()` and the audit sync
+  no longer take such a page for the last one. A features download with a page
+  cut short stores no `ETag`s, so the next `loadRouteNetwork()` downloads again.
+- **A venue feature with a `"NaN"` level no longer ends the app.**
+  `FloorLevel.quantize` trapped on non-finite and huge levels during every
+  route-network build; such a level now gets a key no floor uses.
+- **A path coordinate far out of range no longer traps the snapping grid**, and
+  `JSONValue.intValue` returns `nil` instead of trapping on a number that does
+  not fit an `Int`.
+
 ## [6.0.0-beta.61] — 2026-10-19
 
 ### ⚠️ Behaviour changes
