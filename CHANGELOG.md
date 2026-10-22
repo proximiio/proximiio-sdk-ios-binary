@@ -6,6 +6,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.63] — 2026-10-22
+
+### ⚠️ Behaviour changes
+
+- **An entered geofence or privacy zone exits `geofenceExitDelay` after the
+  position leaves it** (default 3 s). Before, it exited on the first position
+  outside, so 2–3 m of positioning jitter across an edge produced bursts of
+  enter/exit pairs, each one uploaded. Enters are still emitted at once. A
+  position back inside within the delay emits nothing: no exit and no new
+  enter. Once the position has been outside for the delay the exit is emitted,
+  also when no further position arrives. Its `dwellTime`, and the location,
+  accuracy, floor and time of the uploaded exit, are those of the first
+  position outside (zeroed when that position was inside a privacy zone), so
+  the server-side span from enter to exit equals the dwell. While an exit
+  waits, `enteredGeofenceIds` still lists the geofence, and a privacy zone
+  keeps `isInPrivacyZone` `true` and position reporting suppressed. `stop()`
+  emits every exit at once, including those still waiting. A geofence removed
+  by a sync while its exit waits gets no exit, as before. Proximity triggers,
+  the exit hysteresis and the 1 s debounce are unchanged.
+  `geofenceExitDelay = 0` restores the old behaviour. Same rule as Android SDK
+  6.0.0-beta.29 (ADR-0071).
+- **Initializer signature.** `ProximiioConfiguration.init` gains
+  `geofenceExitDelay: TimeInterval = 3` between `eventBatching:` and
+  `positioning:`. Source compatible: existing call sites compile unchanged.
+  The API baseline check reports the changed signature as breaking; binary
+  consumers recompile against the new release, as with every beta.
+
+### Added
+
+- **`ProximiioConfiguration.geofenceExitDelay`** (default
+  `ProximiioConfiguration.defaultGeofenceExitDelay`, 3 s): seconds the
+  position must stay outside an entered geofence or privacy zone before its
+  exit is emitted. A value that is not finite and `>= 0` is treated as `0`;
+  nothing throws. `ProximiioDiagnostics.ConfigurationSummary.geofenceExitDelay`
+  reports the delay applied; its memberwise initializer gains a trailing
+  defaulted `geofenceExitDelay:` parameter.
+
 ## [6.0.0-beta.62] — 2026-10-22
 
 ### ⚠️ Behaviour changes
