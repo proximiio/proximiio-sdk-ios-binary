@@ -6,6 +6,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.64] — 2026-10-23
+
+### ⚠️ Source break
+
+- **New enum cases: an exhaustive `switch` needs a new branch.**
+  `BlueiotBindingSignal.privacyZone(since:)` (relay-api contract v0.16.0
+  `private`) and `ProximiioDiagnostics.NoPositionReason.privacyZone`. An app
+  that builds the SDK from source and switches over either without a
+  `default` branch no longer compiles: add the case. `.privacyZone` of
+  `NoPositionReason` is raised only with
+  `ProximiioConfiguration.withholdsPositionsInPrivacyZones` on; the binding
+  signal whenever relay-api says `private` (see below).
+
+### ⚠️ Behaviour changes
+
+- **The wristband binding reads relay-api's `signal: private`.** A band silent
+  in a privacy zone, or within the site's privacy margin of one, reads as
+  `BlueiotBindingSignal.privacyZone(since:)` on the binding stream and in the
+  one-shot poll. Before, it read as `.ok`. Every other unknown value still
+  reads as `.ok`. On the stream `since` is the relay's; the one-shot has none,
+  so a silence keeps the start it was first seen at (also when `lost` turns
+  into `private` or back), and a new one starts at the poll.
+- **Initializer signatures.** `ProximiioConfiguration.init` gains
+  `withholdsPositionsInPrivacyZones: Bool = false` between
+  `geofenceExitDelay:` and `positioning:`, and
+  `ProximiioDiagnostics.ConfigurationSummary.init` a trailing
+  `withholdsPositionsInPrivacyZones: Bool = false`. Source compatible: existing
+  call sites compile unchanged. The API baseline check reports the changed
+  signatures as breaking; binary consumers recompile against the new release,
+  as with every beta.
+
+### Added
+
+- **`ProximiioConfiguration.withholdsPositionsInPrivacyZones`** (default
+  `false`, so nothing changes for an app that does not turn it on). While the
+  visitor is private, `positions()` yields no fix and `lastPosition` stays the
+  last fix before the zone. The geofence engine still evaluates every fix, so
+  the zone's exit (after `geofenceExitDelay`) ends the state; geofence and
+  proximity events are unchanged. The positioning status reports
+  `NoPositionReason.privacyZone`, which outranks every reason except
+  `notStarted` and `positioningSourceEnded`, and
+  `positioningAvailabilityChanges()` / `isPositioningAvailable` stay `true`:
+  the position is withheld, not lost. When the state ends, the newest fix
+  withheld is delivered at once. A fix inside a privacy zone is never uploaded,
+  as before. `ConfigurationSummary.withholdsPositionsInPrivacyZones` reports
+  the option.
+- **`Proximiio.setPositioningSourcePrivate(since:)`**: the app passes the
+  positioning source's privacy signal, since when its tag has been silent in a
+  privacy zone, or `nil`. `ProximiioBlueiot` and the umbrella module do not
+  depend on each other, so the app maps the binding's state:
+  `if case let .active(_, _, .privacyZone(since)) = state` passes `since`,
+  every other state `nil`. Kept across `stop()` and `start()`.
+- **`Proximiio.privacyZoneStateChanges()` and `Proximiio.privacyZoneState`**:
+  one privacy state, `PrivacyZoneState`, for the map and the app.
+  `isInPrivacyZone` is the position inside a privacy zone (the existing
+  `Proximiio.isInPrivacyZone`), `positioningSourcePrivateSince` the source's
+  signal, `isPrivate` either. A new stream starts with the current state, then
+  yields each change; it is reported whatever the option says, and finishes on
+  `stop()` like the other run-scoped streams.
+
 ## [6.0.0-beta.63] — 2026-10-22
 
 ### ⚠️ Behaviour changes
