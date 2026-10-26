@@ -6,6 +6,128 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.65] — 2026-10-26
+
+### ⚠️ Behaviour changes
+
+- **`PermissionStatus` reads `.denied` for an input whose Info.plist key is
+  missing.** Bluetooth without `NSBluetoothAlwaysUsageDescription` and motion
+  without `NSMotionUsageDescription` read `.denied` whatever the system says;
+  location without `NSLocationWhenInUseUsageDescription` reads `.denied` while
+  the user was never asked. Before, they read `.notDetermined` (or the system
+  value). `ProximiioError.blockingFailures(for:)`, the start-time "no viable
+  positioning inputs" warning and `NoPositionReason.noViablePositioningInputs`
+  follow from it. An app that declares the keys sees no change.
+- **`authenticate()` works without a connection** when the API accepted this
+  app's token on this phone before, or when a bundled seed built for this token
+  is installed (`allowsOfflineStart`, on by default). With no connection it
+  returns at once; on a connection that does not answer, after at most 30 s. It
+  used to throw, so a "no connection" screen tied to that error stops
+  appearing. `tokenStatus` is then `.unverified`: the engines run on the data
+  stored on the phone, nothing is synced or uploaded, and the cold sync that
+  `authenticate()` runs online is skipped, so fresh data arrives later through
+  `syncEvents()` and `venueDataChanges()`. The SDK checks the token again when
+  the network comes back, on foreground and every few minutes; once the API
+  accepts it, syncing starts and the waiting uploads go out. Set
+  `allowsOfflineStart = false` to keep the old behaviour.
+- **A refused token stops the SDK and deletes its local data.** Whenever the API
+  refuses the token — in `authenticate()`, in the background check, or while the
+  SDK runs — `syncEvents()` emits `syncFailed(reason: "unauthorized")`, the SDK
+  stops (positioning stops) and returns to `.idle`, and it deletes the synced
+  venue data, the stored features, map style and amenities, every installed
+  offline package, the waiting uploads and the stored token. `tokenStatus`
+  becomes `.rejected`, `start()` throws `notAuthenticated` until an
+  `authenticate()` with an accepted token succeeds, and a bundled seed is not
+  installed again for the refused token. Only the token check decides: when
+  sync, an upload or a download is refused, the SDK checks the token first and
+  deletes nothing unless that check refuses it too.
+- **A refusal while the SDK runs no longer keeps polling.** It used to emit
+  `syncFailed(reason: "unauthorized")` and keep syncing and retrying uploads.
+  Now the event comes only once the token check confirmed the refusal, and the
+  SDK stops as above.
+- **Waiting uploads survive an app kill.** Positions and geofence events not yet
+  uploaded are kept on the phone (next to the sync database, same data
+  protection, not backed up) and sent on a later launch. Same limits as before:
+  at most 500 of each, oldest dropped first. Nothing is written without
+  reporting consent. Withdrawing consent, creating or authenticating the SDK
+  with reporting off, a refused token, `signOut()` and `clearLocalData()`
+  delete them, wherever the database lives.
+- **A token of another application wipes the stored data.** When the API
+  accepts a token that belongs to another application than the data on the
+  phone, that data is deleted before the first sync.
+- **`authenticate()` gives up after 30 s.** Without an offline start it used to
+  take up to about two minutes on Wi-Fi with no internet before throwing.
+- **`sync()` and `resetAndRefresh()` check an unverified token first.** After an
+  offline start they throw the check's error instead of syncing, and
+  `resetAndRefresh()` wipes nothing unless the API accepts the token.
+- **An unreadable Keychain is not a refused token.** When the stored token
+  cannot be read (a locked phone before its first unlock), the token check goes
+  out without it; `authenticate()` now throws that `KeychainError` instead of
+  `invalidToken`, and nothing is deleted.
+- **Initializer signatures.** `ProximiioConfiguration.init` gains
+  `allowsOfflineStart: Bool = true` between `withholdsPositionsInPrivacyZones:`
+  and `positioning:`, `ProximiioDiagnostics.ConfigurationSummary.init` a
+  trailing `allowsOfflineStart: Bool = true`, `OfflinePackageFetchSummary.init`
+  trailing `isDataOnly:` and `carriesAcceptedToken:`, and
+  `OfflinePackageFetcher.fetch` an `acceptedTokenDigest:` before `progress:`.
+  Source compatible: existing call sites compile unchanged. The API baseline
+  check reports the changed signatures as breaking; binary consumers recompile
+  against the new release, as with every beta.
+
+### Added
+
+- **`ProximiioConfiguration.allowsOfflineStart`** (default `true`), mirrored in
+  `ConfigurationSummary.allowsOfflineStart`.
+- **`Proximiio.tokenStatus`** (`.verified` / `.unverified` / `.rejected`),
+  read-only, also in `ProximiioDiagnostics.tokenStatus` and as a `Token —` line
+  in the diagnostics summary.
+- **First launch without a connection, from a bundled seed.**
+  `proximiio-offline-fetch` checks the token and writes it into the seed
+  (`accepted-token.sha256`), so a seed built for the app's token lets
+  `authenticate()` succeed offline on the very first launch. While the API has
+  no offline package, the tool writes a **data-only seed** instead of failing:
+  the venue features, map style and amenity catalogue next to
+  `sync-snapshot.json`. `installBundledOfflineSeedIfNeeded` installs a seed
+  without `manifest.json`, and a seed's features become the stored route
+  network (`loadCachedRouteNetwork()` works offline); a data-only seed's style
+  and amenities become the stored style and catalogue. None of it replaces data
+  already stored online. Rebuild the seed with the new tool, with the same
+  token and `--api-url` the app uses.
+
+### Fixed
+
+- **A missing Info.plist usage description no longer ends the app.** The rule,
+  for every privacy-protected input: without its key the SDK does not use it,
+  logs one error naming the key, and reports the input as denied. Before,
+  `start()` with BLE beacon scanning or UWB, `startBeaconDiscovery()`, device
+  management (`PRXCentralLink`) and the BlueIoT tag emulator ended the app
+  without `NSBluetoothAlwaysUsageDescription`, and `enablePdr()` and barometric
+  floor detection ended it without `NSMotionUsageDescription`. Now BLE scanning,
+  UWB, PDR steps and barometric floors stay off; beacon discovery still ranges
+  iBeacons; `PRXCentralLink.currentState` and the tag emulator read
+  `.unauthorized`. UWB also stays off without
+  `NSNearbyInteractionUsageDescription`, and camera-assisted UWB direction
+  without `NSCameraUsageDescription` ranges without direction.
+- **`requestPermissions(always: true)` no longer hangs after the first Always
+  upgrade.** iOS offers "Change to Always Allow" once per install. Every later
+  call — including the first one after an update from an app version or SDK
+  5.x that already showed it — waited forever for an answer that never came.
+  Now a request iOS shows no prompt for returns the current status about 1.5
+  seconds after it is made; with a prompt on screen it still returns when the
+  user answers. A request made while the app is in the background returns the
+  same way instead of waiting for the app to come forward; an answer that comes
+  later still reaches `permissionUpdates()`. Applies to
+  `PermissionsManager.requestLocation(always:)` too.
+
+### Documentation
+
+- The offline guide has a "Starting without a connection" section with a small
+  table of what `authenticate()` does on each launch, and an "A refused token"
+  section. It no longer says `authenticate()` needs a network only the first
+  time (it needed one on every launch). The lifecycle, errors, troubleshooting
+  and API pages, the quickstart, Getting Started and the README say the same.
+- The customer docs, DocC articles and Quick Help now describe what the app sees instead of the requests the SDK makes: HTTP status codes, conditional-download headers, paging and endpoint paths are gone from the guides, the error tables and the public doc comments. The network hosts page keeps the hosts, credentials and the data each request carries; its "Headers on API requests" section is now "Identifiers sent to the API". No API change.
+
 ## [6.0.0-beta.64] — 2026-10-23
 
 ### ⚠️ Source break
