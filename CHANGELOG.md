@@ -6,6 +6,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.66] — 2026-10-27
+
+### ⚠️ Behaviour changes
+
+- **A refused token deletes the local data only once the API has kept refusing
+  it for at least two hours.** 6.0.0-beta.65 deleted everything after the first
+  refusal. Now the SDK counts the refusals of its token check, across app
+  launches, and deletes the local data only after three of them spanning at
+  least two hours. Until then `tokenStatus` is `.unverified`: positioning keeps
+  running on the data stored on the phone, nothing is synced or uploaded, and
+  the SDK asks again after 5 minutes, then every 30 minutes, and at the next
+  launch. On a phone where the token was accepted before, `authenticate()`
+  returns as after an offline start instead of throwing `invalidToken`; with
+  nothing stored for the token it still throws at once, and deletes nothing.
+  `sync()` and `resetAndRefresh()` still throw `invalidToken` but keep the
+  data. `syncFailed(reason: "unauthorized")`, `.rejected`, the stop and the
+  deletion come only at the end. An accepted check forgets the refusals. A
+  bundled seed is not installed while the API refuses its token.
+- **A refusal that is not clearly about the token never counts.** It never
+  deletes anything and no longer asks for a token check, and it now reaches
+  the app as `ProximiioAPIError.server(statusCode:)`, a transient failure,
+  instead of `.unauthorized`.
+- **An amenity's metadata and title translations count as part of it.** Two
+  amenities that differ only there are no longer equal, and a catalogue
+  refresh that changes only them names `.amenities` in `venueDataChanges()`.
+
+### Added
+
+- **`ProximiioAmenity.metadata`** (`JSONValue?`): whatever the venue's editors
+  attached to the amenity, such as whether it is listed in search and in which
+  order. The SDK does not interpret it. A new initializer
+  `init(id:title:category:icon:details:metadata:titleTranslations:)` sets it
+  and the title translations; the existing initializer is unchanged.
+- **`ProximiioAmenity.title(language:)` and `titleTranslations`**, read from
+  the amenity's `title_i18n` (an object keyed by language code, or that object
+  as a JSON string), like `ProximiioFeature.title(language:)`: the exact
+  language, then the base language, then `title`; blank translations are
+  skipped. Both come from the stored catalogue, so a catalogue stored by an
+  earlier SDK version has them without a new download. An amenity whose
+  description is not text (an object or an array) keeps `details == nil` and
+  stays in the catalogue.
+
+### Fixed
+
+- The background token check no longer misses a network that comes back just
+  as the check starts; it used to wait for its next retry.
+- `RelayScriptedSleeper.wait(forSleeps:iterations:)` and
+  `QuuppaScriptedSleeper.wait(forSleeps:iterations:)` no longer give up early
+  on a busy machine. They used to spin, and under load they could use up their
+  budget before the client under test had run, failing a test of a healthy
+  client. They now check once a millisecond and return as soon as the count is
+  reached; a count that never comes ends the wait after about `iterations`
+  milliseconds (ten seconds by default) instead of almost at once.
+
 ## [6.0.0-beta.65] — 2026-10-26
 
 ### ⚠️ Behaviour changes
