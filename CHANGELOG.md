@@ -6,6 +6,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.67] — 2026-10-28
+
+### ⚠️ Behaviour changes
+
+- **A place, floor, department, geofence, privacy zone or input deleted on
+  the server now leaves the phone within about 15 minutes, even when the
+  change log misses the deletion.** Before, it stayed until the app was
+  reinstalled or `resetAndRefresh()` ran, so two phones on one token could
+  show different floors. Each removed record is reported as
+  `SyncEvent.deleted` and counted by `sync()` and `syncCompleted(applied:)`,
+  and `venueDataChanges()` reports it like any other deletion.
+- **Some records stay on purpose.** A record that changed on the server in
+  the last hour and reached the phone through the change log is kept until
+  that hour has passed, so data the server is still publishing is not
+  removed. When the server's
+  venue data has no records of a kind at all, the phone keeps its records of
+  that kind. Applications and amenities are never removed this way.
+
+### Fixed
+
+- A map feature deleted on the server before 2026-10-28 is now removed from
+  the phone. Those deletions name the feature by a shorter id than the one
+  the phone stores, so the SDK missed them and the feature stayed on the map.
+
 ## [6.0.0-beta.66] — 2026-10-27
 
 ### ⚠️ Behaviour changes
