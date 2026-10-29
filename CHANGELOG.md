@@ -6,6 +6,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.68] — 2026-10-29
+
+### Performance
+
+- **Repeated `features()` and `geofences()` calls are answered from memory
+  until the venue data changes.** Each call decoded every stored row: about
+  half a second for a venue of a thousand features, and every other call to
+  the SDK waited behind it. The decoded rows are now kept until a sync pass, a
+  `loadRouteNetwork()` download, a deletion or a wipe changes that kind of
+  data, or until `stop()`. The other reads of stored venue data (`places()`,
+  `floors()`, `cachedAmenities()`, …) work the same way. They return the same
+  rows as before.
+- **`loadCachedRouteNetwork()` no longer reads the stored features again when
+  the installed route network was built from them and they have not changed.**
+  It returns the installed network's path count, as `loadRouteNetwork()` does
+  when the venue has not changed.
+
 ## [6.0.0-beta.67] — 2026-10-28
 
 ### ⚠️ Behaviour changes
