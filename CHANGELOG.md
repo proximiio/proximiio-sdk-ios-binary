@@ -6,6 +6,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.70] — 2026-11-10
+
+### Fixed
+
+- The binary is built against the GRDB version the SDK is tested with. The
+  6.0.0-beta.69 build picked up a newer GRDB and was stopped before
+  publishing, so 6.0.0-beta.69 has no binary release. Its changes, listed
+  under 6.0.0-beta.69 below, ship in this version. Nothing else changes.
+
+## [6.0.0-beta.69] — 2026-11-10
+
+### Added
+
+- **`geofenceEvents(replayingEntered:)`**: with `true`, the new stream first
+  yields `.entered` for each geofence the visitor is inside, earliest enter
+  first, then `.privacyZoneEntered` for each privacy zone the visitor is
+  inside, then the live events. A geofence the visitor is already inside when
+  the app opens the stream, for example at the start of a tour, then has its
+  enter before its exit. Only the new stream receives the replay; streams
+  opened earlier receive nothing extra. The replay is not reported to visitor
+  analytics. A geofence whose exit waits for `geofenceExitDelay` is replayed,
+  and its exit follows when the delay ends. With `false`, and through the
+  unchanged `geofenceEvents()`, the stream behaves as before.
+
+### Fixed
+
+- A `BeaconDiscoverySession` that is stopped and started again now ranges
+  iBeacons again. Before, only its Bluetooth scan came back, so iBeacons
+  stopped appearing after the first `stop()`. It ranges the same UUIDs a first
+  start would, including UUIDs passed to `addUUID(_:)` while it was stopped.
+
 ## [6.0.0-beta.68] — 2026-10-29
 
 ### Performance
