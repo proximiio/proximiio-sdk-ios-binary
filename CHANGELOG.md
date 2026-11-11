@@ -6,6 +6,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.71] — 2026-11-11
+
+### ⚠️ Behaviour changes
+
+- **In a venue with barriers drawn, a position that jumps through a wall now
+  stops at the wall.** A barrier is a venue feature with `metadata.type` set
+  to `barrier` (a line or a polygon on a floor level). When a new position's
+  move from the last published one crosses a barrier and walking around it
+  would take longer than the time between the two allows, the SDK publishes
+  a point 0.4 m short of the wall on the visitor's side instead.
+  `positions()`, `lastPosition`, geofences and visitor analytics receive that
+  point, so **a geofence behind a wall is entered later, or not at all**.
+  Route snapping no longer moves a position across a barrier. Venues without
+  barriers, positions without a floor level and apps that do not load the
+  route network behave as before. Turn it off with
+  `configuration.positioning.barriers.isEnabled = false`.
+
+### Added
+
+- **`positioning.barriers` (`BarrierConfiguration`)**: the barrier settings,
+  `isEnabled` (default `true`), `armingPositions` (`10`, positions on a floor
+  published unchanged before checks begin), `maxWalkingSpeed` (`2.0` m/s, at
+  most `10`), `wallMargin` (`0.4` m, from `0.05` to `2`), `releasePositions`
+  (`10`) and `releaseMinimumDuration` (`5` s). Walls closer than 10 cm count
+  as joined. After `releasePositions` stopped
+  positions in a row spanning at least `releaseMinimumDuration`, the next
+  position is accepted, so a door missing from the map does not hold the
+  visitor on one side for long. The history starts again on a floor change,
+  `start()`, `stop()` and new barrier data. The diagnostics report shows the
+  number of installed barriers, stopped positions and releases.
+
 ## [6.0.0-beta.70] — 2026-11-10
 
 ### Fixed
