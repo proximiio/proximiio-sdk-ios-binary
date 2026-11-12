@@ -6,6 +6,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.72] — 2026-11-12
+
+### Added
+
+- **`ProximiioConfiguration.privacyZoneExitDelay`** (`TimeInterval?`, default
+  `nil`, so nothing changes for an app that does not set it): seconds the
+  position must stay outside a privacy zone before its exit is emitted. `nil`
+  keeps today's rule, a privacy zone waits for `geofenceExitDelay`. With a
+  value, privacy zones wait that long and other geofences still wait for
+  `geofenceExitDelay`. The privacy state ends at the zone's exit, so with
+  `withholdsPositionsInPrivacyZones` on the first position after the zone comes
+  this long after the visitor leaves it: an app with a 5 s `geofenceExitDelay`
+  can set `1` here and get the position back after about 1 s. A value that is
+  not finite or below `0` counts as `0`. Read once when the facade is created.
+  It is a property, not an initializer parameter: set it on the configuration
+  before creating the facade. The diagnostics configuration summary reports
+  it. Same name and rule as the Android SDK.
+
 ## [6.0.0-beta.71] — 2026-11-11
 
 ### ⚠️ Behaviour changes
