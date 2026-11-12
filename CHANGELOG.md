@@ -6,6 +6,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.73] — 2026-11-12
+
+### ⚠️ Behaviour changes
+
+- **A venue record deleted on the server whose deletion never reaches the
+  change log now leaves the phone within about an hour (was 5–15 minutes),
+  or about two hours when it changed in the hour before it was deleted.**
+  Deletions the change log carries still arrive on the next sync, and
+  `resetAndRefresh()` still brings the phone in line at once.
+- **Visitor analytics that the server refuses for good are now dropped
+  instead of being retried forever.** A batch of positions or events the
+  server rejects as invalid, or for an endpoint it does not have, is removed
+  from the queue; so is a batch that failed 10 times in a row with an answer
+  from the server (a server error, for example), counted across app launches.
+  Failures without an answer (no network) and refused tokens never drop
+  anything: those batches wait, and what happens to a refused token's data is
+  decided as before.
+- **Failed visitor analytics uploads wait before they are tried again** when
+  the server answered with an error: a random moment up to 1 minute after the
+  first failure, doubling with each failure in a row up to 30 minutes, instead
+  of on every flush. The wait survives an app relaunch. Without an answer (no
+  connection, or venue Wi-Fi without internet) the next flush still tries
+  again, and once the token is confirmed after a refusal, uploads go at once.
+  After the network comes back, queued geofence events leave at a random
+  moment within 30 seconds instead of at once, so the phones in a venue do not
+  all send at the same instant.
+- **The RTLS relay fallback now polls every 5 seconds (was every second)**
+  while the position stream is unavailable, so relay positions arrive 5 s
+  apart until the stream is back. Set `RelayConfiguration.fallbackPollInterval`
+  to keep the old rate.
+
+### Changed
+
+- Venue data: the full package is downloaded at the first start, then
+  checked about once an hour and downloaded again only when it changed,
+  instead of on every sync without changes in the change log; changes still
+  arrive through the change log every sync interval. The hour carries across
+  app launches. An install filled from bundled offline data compares with the
+  server on its first online sync.
+- Requests to the Proximi.io API (and the Live View upload) that are retried
+  on the same host now wait between attempts instead of retrying at once: a
+  random wait of up to 1 s, then up to 2 s, then up to 4 s. When the server
+  says it is unavailable and names a wait of up to 30 s, the retry waits that
+  long; a longer wait is not waited out. One request stops retrying 60 s after
+  it started. Switching to a backup host still happens at once, and so do the
+  retries while the phone has no connection at all, so an offline start is not
+  slowed down. A request the server throttles is now retried once the wait the
+  server names has passed (up to 30 s); without a named wait it fails at once,
+  as before.
+
+### Fixed
+
+- A visitor analytics batch the server could never accept no longer blocks
+  every batch behind it.
+
 ## [6.0.0-beta.72] — 2026-11-12
 
 ### Added
