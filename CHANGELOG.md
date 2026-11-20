@@ -6,6 +6,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.74] — 2026-11-20
+
+### ⚠️ Behaviour changes
+
+- **Relay positions without an accuracy from the relay now carry 1 m (was
+  3 m).** Positions the relay sends with their own accuracy keep it. Set
+  `RelayConfiguration.defaultAccuracy` to `3` to keep the old value.
+- **A wristband session whose end time has passed now ends at once, without
+  waiting for the relay.** `BlueiotWristbandBinding` reports
+  `.ended(.expired)` as soon as it is created with such a stored session (also
+  before `restore()`), when the app returns to the foreground after the end
+  time, and at the end time while the app runs. Until now the state could stay
+  `.active` with `.connecting` until the relay answered, for up to about half
+  a minute. The app can offer the scan of a new wristband at once. A session
+  whose end time has not come works as before, also when its token has
+  expired.
+
+### Fixed
+
+- After an SDK version update, Xcode no longer keeps the previous version's
+  module and reports new members missing (for example *"cannot find
+  'BarrierConfiguration' in scope"*). The files in the binary now carry the
+  release date instead of 1980-01-01. Between releases up to 6.0.0-beta.73,
+  choose **Product → Clean Build Folder** once after the update.
+- **Level changers that share `properties.group` route as one changer.** A
+  floor change goes from the member on one floor to the member on the other,
+  so a route can take a long ramp or escalator drawn as one point at each end.
+  Only changers of the same `type` join. Routes in venues without `group` stay
+  as they were.
+
 ## [6.0.0-beta.73] — 2026-11-12
 
 ### ⚠️ Behaviour changes
