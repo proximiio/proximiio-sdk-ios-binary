@@ -6,6 +6,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0-beta.75] — 2026-11-22
+
+### ⚠️ Behaviour changes
+
+- **A silent wristband position stream is now closed after 30 s (was
+  45 s).** `BlueiotWristbandBinding` treats a stream that sent nothing for
+  `BlueiotBindingConfiguration.streamSilenceTimeout` (new, default 30 s, at
+  least 20 s) as dead and reconnects. Set it to `45` to keep the old wait.
+- **A wristband stream that was live and ends now reconnects at once**
+  (before: after a backoff wait of about 1 s, and sometimes much longer).
+  Only repeated failures wait, 1 s growing to 30 s as before. A token
+  refresh that goes through while the binding waits to reconnect now ends
+  the wait at once. In the polling fallback, a stream retry that fails goes
+  back to polling at once.
+- **A network edge in front of the relay that holds a call back (for
+  example a bot check) is now a temporary failure:
+  `BlueiotBindingError.edgeChallenge`.** The binding retries by itself and
+  never ends the session, drops its tokens or reports the visitor signed out
+  because of it. Until now such an answer could read as an invalid response
+  or a refused call, and on an automatic re-bind it could end the session.
+  `bind(tagID:)`, `end()` and `policy()` can now throw this case; a switch
+  over `BlueiotBindingError` needs it (or a `default`).
+- **A browser check from an edge in front of the API is now retried and
+  reported as its own error.** When a CDN or firewall in front of the
+  Proximi.io API (for example Cloudflare's managed challenge) answers instead
+  of the API, the SDK retries the request with backoff, as after a timeout or
+  a server error. It keeps the token and everything it stored, keeps serving
+  the cached data, and never counts the answer toward deleting the data of a
+  refused token. When the retries run out, the call throws the new
+  `ProximiioAPIError.edgeChallenge(statusCode:)` instead of
+  `ProximiioAPIError.server(statusCode: 401)` or `(statusCode: 403)`, and a
+  sync that keeps meeting it reports `SyncEvent.syncFailed(reason:)` with
+  `"edgeChallenge"`. A `switch` over `ProximiioAPIError` without
+  `@unknown default` warns about the new case. A `401` or `403` from the API
+  itself works as before.
+- **Live view uploads keep retrying through such a browser check.** Until now
+  it stopped the uploads as if the ingest token were wrong.
+
+### Added
+
+- **WebSocket transport for the wristband binding.**
+  `BlueiotBindingTransport.webSocket` receives positions over a WebSocket;
+  `.automatic` uses a WebSocket and switches to Server-Sent Events only when
+  a WebSocket cannot be opened on the network (never because an open one
+  dropped), and tries the WebSocket again at the first reconnect five
+  minutes later. Use them where a proxy holds Server-Sent Events back and
+  the dot moves in bursts. Positions, signal, session ends and token refresh
+  work the same on every transport. `.serverSentEvents` stays the default;
+  an app that does not set `transport` sees no change. A switch over
+  `BlueiotBindingTransport` needs the new cases (or a `default`).
+- `BlueiotBindingDiagnostics.transport` now reports the transport in use
+  (`.serverSentEvents` or `.webSocket`, never `.automatic`).
+  `configuredTransport` (new) is the configured value, and `edgeChallenges`
+  (new) counts calls a network edge held back.
+- `ProximiioAPIError.edgeChallenge(statusCode:)`: an edge in front of the API
+  answered with a browser check that an app cannot pass. Failure code `11`,
+  category `server`, retryable. The SDK log names each one with the request
+  path and host.
+
+### Fixed
+
+- After a wristband stream went silent, the binding could wait up to about
+  half a minute before opening the next stream, even when a token refresh
+  had just gone through (a 17 s gap after the refresh in a field log). The
+  wait now ends with the refresh, and the next stream opens at once.
+
 ## [6.0.0-beta.74] — 2026-11-20
 
 ### ⚠️ Behaviour changes
